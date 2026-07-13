@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Openlive 0.2 Runtime Console</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">OPENLIVE 0.2</p>
+          <h1>Full-duplex runtime console</h1>
+          <p class="subtitle">
+            An experimental continuity runtime with local-first interruption,
+            playout acknowledgments, answer leases, and bidirectional providers.
+          </p>
+        </div>
+        <div id="connection" class="status disconnected">Disconnected</div>
+      </header>
+
+      <section class="controls panel">
+        <button id="connect">Connect</button>
+        <button id="microphone" disabled>Start microphone</button>
+        <button id="disconnect" class="secondary" disabled>Disconnect</button>
+        <label>
+          Backchannels
+          <select id="backchannels" disabled>
+            <option value="off">Off</option>
+            <option value="minimal" selected>Minimal</option>
+            <option value="natural">Natural</option>
+            <option value="expressive">Expressive</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="metrics">
+        <article class="panel metric">
+          <span>Speech probability</span>
+          <strong id="speechProbability">0.00</strong>
+        </article>
+        <article class="panel metric">
+          <span>Interaction state</span>
+          <strong id="interactionState">idle</strong>
+        </article>
+        <article class="panel metric">
+          <span>Output gain</span>
+          <strong id="outputGain">100%</strong>
+        </article>
+      </section>
+
+      <section class="grid">
+        <article class="panel">
+          <h2>Assistant stream</h2>
+          <p id="assistantText" class="transcript">Waiting for a completed turn.</p>
+          <p id="providerHint" class="hint">
+            Provider details appear after connection. Speak over output:
+            Openlive should duck locally before the server confirms whether to
+            resume or cancel.
+          </p>
+        </article>
+        <article class="panel">
+          <h2>Event timeline</h2>
+          <ol id="timeline" class="timeline"></ol>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
