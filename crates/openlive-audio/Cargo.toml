@@ -6,7 +6,6 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-base64.workspace = true
 openlive-protocol.workspace = true
 
 [lints]

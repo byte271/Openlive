@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use openlive_protocol::{ProviderLifecycleState, RealtimeEvent};
 use openlive_provider::{
-    MockDuplexProvider, ProviderInput, ProviderSessionRequest, RealtimeProvider,
+    MockDuplexProvider, ProviderInput, ProviderOutput, ProviderSessionRequest, RealtimeProvider,
 };
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -54,7 +54,7 @@ async fn mock_provider_obeys_generation_and_lifecycle_contract() {
             .expect("provider closed");
         if emission.generation_id == Some(second_generation) {
             second_started = true;
-            if matches!(&emission.event, RealtimeEvent::OutputAudioFrame(_)) {
+            if matches!(&emission.output, ProviderOutput::Audio(_)) {
                 assert!(emission.media_offset_us >= previous_offset);
                 previous_offset = emission.media_offset_us;
             }
@@ -63,8 +63,8 @@ async fn mock_provider_obeys_generation_and_lifecycle_contract() {
         }
         let complete = emission.generation_id == Some(second_generation)
             && matches!(
-                emission.event,
-                RealtimeEvent::ProviderState(ref state)
+                emission.output,
+                ProviderOutput::Event(RealtimeEvent::ProviderState(ref state))
                     if state.state == ProviderLifecycleState::Complete
             );
         if complete {
@@ -82,6 +82,57 @@ async fn mock_provider_obeys_generation_and_lifecycle_contract() {
             break;
         }
     }
+}
+
+#[tokio::test]
+async fn rapid_cancellation_keeps_only_the_latest_generation_live() {
+    let provider = MockDuplexProvider::default();
+    let session = provider
+        .open_session(ProviderSessionRequest {
+            session_id: Uuid::new_v4(),
+        })
+        .await
+        .expect("session");
+    let (input, mut output) = session.into_parts();
+    for conversation_version in 1..=16 {
+        let generation_id = Uuid::new_v4();
+        input
+            .send(commit(generation_id, conversation_version))
+            .await
+            .expect("commit");
+        input
+            .send(ProviderInput::CancelGeneration { generation_id })
+            .await
+            .expect("cancel");
+    }
+    let final_generation = Uuid::new_v4();
+    input
+        .send(commit(final_generation, 17))
+        .await
+        .expect("final commit");
+
+    let mut final_started = false;
+    loop {
+        let emission = timeout(Duration::from_secs(2), output.recv())
+            .await
+            .expect("provider stalled")
+            .expect("provider closed");
+        if emission.generation_id == Some(final_generation) {
+            final_started = true;
+        } else if final_started {
+            panic!("stale generation emitted after the final generation started");
+        }
+        if emission.generation_id == Some(final_generation)
+            && matches!(
+                emission.output,
+                ProviderOutput::Event(RealtimeEvent::ProviderState(ref state))
+                    if state.state == ProviderLifecycleState::Complete
+            )
+        {
+            break;
+        }
+    }
+    input.send(ProviderInput::Close).await.expect("close");
 }
 
 fn commit(generation_id: Uuid, conversation_version: u64) -> ProviderInput {

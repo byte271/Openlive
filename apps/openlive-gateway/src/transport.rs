@@ -1,24 +1,35 @@
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{stream::SplitStream, SinkExt, StreamExt};
-use openlive_protocol::EventEnvelope;
+use openlive_protocol::{EventEnvelope, MediaPacket};
 use tokio::{sync::mpsc, task::JoinHandle};
+
+pub(crate) enum ServerMessage {
+    Control(EventEnvelope),
+    Media(MediaPacket),
+}
 
 pub(crate) struct WebSocketTransport {
     pub incoming: SplitStream<WebSocket>,
-    pub outgoing: mpsc::Sender<EventEnvelope>,
+    pub outgoing: mpsc::Sender<ServerMessage>,
     writer: JoinHandle<()>,
 }
 
 impl WebSocketTransport {
     pub(crate) fn start(socket: WebSocket) -> Self {
         let (mut socket_sender, incoming) = socket.split();
-        let (outgoing, mut outgoing_receiver) = mpsc::channel::<EventEnvelope>(128);
+        let (outgoing, mut outgoing_receiver) = mpsc::channel::<ServerMessage>(64);
         let writer = tokio::spawn(async move {
-            while let Some(event) = outgoing_receiver.recv().await {
-                let Ok(json) = serde_json::to_string(&event) else {
-                    continue;
+            while let Some(message) = outgoing_receiver.recv().await {
+                let message = match message {
+                    ServerMessage::Control(event) => {
+                        let Ok(json) = serde_json::to_string(&event) else {
+                            continue;
+                        };
+                        Message::Text(json)
+                    }
+                    ServerMessage::Media(packet) => Message::Binary(packet.encode()),
                 };
-                if socket_sender.send(Message::Text(json)).await.is_err() {
+                if socket_sender.send(message).await.is_err() {
                     break;
                 }
             }

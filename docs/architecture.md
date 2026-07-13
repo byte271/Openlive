@@ -8,7 +8,7 @@ The continuity plane handles bounded, deadline-sensitive work:
 browser microphone
   -> local adaptive speech confidence
   -> local reversible duck
-  -> 20 ms PCM over WebSocket
+  -> 20 ms binary PCM over WebSocket
   -> adaptive server acoustic features
   -> Chronos interaction controller
   -> generation cancellation / resume
@@ -32,6 +32,7 @@ Continuity does not wait for cognition to decide whether output should duck or s
 - `openlive-audio` owns PCM validation, adaptive acoustics, echo probability, target-speech confidence, and endpointing.
 - Gateway `session` owns one connection's lifecycle and is independent of CLI/provider construction.
 - Gateway `session_state` owns latency, playout, and interruption-repair state.
+- Gateway `transport` owns bounded JSON-control and binary-media serialization.
 - Provider streaming helpers own SSE parsing, phrase segmentation, and PCM framing.
 - Native realtime wire helpers own request construction and provider event payloads.
 - `AnswerLeaseManager` is isolated from the Chronos interaction controller.
@@ -53,9 +54,9 @@ The local detector is intentionally advisory. Chronos remains authoritative for 
 
 ## Adaptive acoustic observations
 
-Protocol 0.3 carries optional client speech confidence and output-reference level. The audio crate independently computes PCM RMS, maintains an adaptive noise floor, fuses client/server confidence, and uses actual playout acknowledgments as an echo prior.
+Protocol 1.0 carries PCM in a compact binary packet with speech, output-level, and aligned echo confidence. The audio crate independently computes PCM RMS, maintains an adaptive noise floor, fuses client/server confidence, and uses actual playout acknowledgments as an echo prior.
 
-This is an improvement over a fixed RMS threshold, but it is not full acoustic echo cancellation. Production requires aligned rendered-audio reference, cross-correlation or a learned echo detector, and target-speaker embeddings.
+The playback and capture worklets share the AudioContext frame clock. Rendered samples enter a bounded ring, and the browser searches plausible delay windows with normalized cross-correlation. This is not adaptive acoustic echo cancellation; production still requires robust nonlinear echo handling and target-speaker embeddings.
 
 ## Chronos state machine
 
@@ -123,11 +124,10 @@ It derives separate acoustic turn-completion confidence and prosodic-finality sc
 
 ## Transport limitations
 
-WebSocket PCM is transparent and easy to inspect, but has:
+Binary WebSocket PCM removes base64 expansion and JSON audio parsing, but still has:
 
-- base64 overhead;
 - TCP head-of-line blocking;
-- no jitter/FEC/PLC;
+- no packet-level FEC/PLC;
 - no standard NAT/media negotiation;
 - browser-dependent capture buffering.
 
@@ -147,7 +147,7 @@ On `hard_yield`:
 
 The worklet reports complete rendered frames; exact partial-frame cutoff telemetry remains future work.
 
-The playback worklet also reports rendered-output RMS. The browser attaches this output-reference level to subsequent microphone frames, allowing the gateway to raise echo probability and suppress interruption confidence when input resembles assistant leakage. Full aligned echo cancellation still requires sample-synchronous reference audio and correlation.
+The playback worklet reports rendered-output RMS and sample-timed reference frames. The browser correlates capture against a 500 ms rendered ring across plausible acoustic delays. The gateway fuses this client echo confidence with its own playout-aware prior, suppressing false interruption confidence when input resembles assistant leakage.
 
 ## Barge-in repair
 

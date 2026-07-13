@@ -807,15 +807,14 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "openlive-audio"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
- "base64 0.22.1",
  "openlive-protocol",
 ]
 
 [[package]]
 name = "openlive-gateway"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "axum",
  "clap",
@@ -835,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "openlive-protocol"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -844,7 +843,7 @@ dependencies = [
 
 [[package]]
 name = "openlive-provider"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -863,7 +862,7 @@ dependencies = [
 
 [[package]]
 name = "openlive-runtime"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "clap",
  "openlive-protocol",

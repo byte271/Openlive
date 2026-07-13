@@ -1,13 +1,12 @@
+import { AdaptiveJitterController } from "./jitter-controller.js";
+
 class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.queue = [];
     this.current = null;
     this.queuedSamples = 0;
-    this.targetSamples = Math.round(sampleRate * 0.04);
-    this.minimumTargetSamples = Math.round(sampleRate * 0.03);
-    this.maximumTargetSamples = Math.round(sampleRate * 0.12);
-    this.stableSamples = 0;
+    this.jitter = new AdaptiveJitterController(sampleRate);
     this.started = false;
     this.underflowReported = false;
     this.lastGenerationId = null;
@@ -15,6 +14,10 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
     this.fadeGenerationId = null;
     this.fadeRemaining = 0;
     this.fadeTotal = 1;
+    this.referenceFrameSize = Math.max(1, Math.round(sampleRate * 0.02));
+    this.reference = new Float32Array(this.referenceFrameSize);
+    this.referenceOffset = 0;
+    this.referenceStartFrame = 0;
     this.port.onmessage = ({ data }) => this.handleMessage(data);
   }
 
@@ -72,13 +75,14 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
       const completedQueue = this.queue.some((frame) =>
         this.completeGenerations.has(frame.generationId),
       );
-      if (this.queuedSamples < this.targetSamples && !completedQueue) {
+      if (!this.jitter.shouldStart(this.queuedSamples, completedQueue)) {
         return true;
       }
       this.started = true;
     }
 
     let wroteSamples = false;
+    let writtenSamples = 0;
     let sumSquares = 0;
     for (let index = 0; index < output.length; index += 1) {
       if (!this.current) {
@@ -103,7 +107,7 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
       sumSquares += value * value;
       this.current.offset += 1;
       this.queuedSamples = Math.max(0, this.queuedSamples - 1);
-      this.stableSamples += 1;
+      writtenSamples += 1;
       wroteSamples = true;
 
       if (this.current.offset >= this.current.samples.length) {
@@ -116,12 +120,10 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
       }
     }
 
-    if (wroteSamples && this.stableSamples >= sampleRate * 10) {
-      this.targetSamples = Math.max(
-        this.minimumTargetSamples,
-        this.targetSamples - Math.round(sampleRate * 0.005),
-      );
-      this.stableSamples = 0;
+    if (
+      wroteSamples &&
+      this.jitter.recordStablePlayback(writtenSamples)
+    ) {
       this.postBufferState();
     }
     if (wroteSamples) {
@@ -130,7 +132,40 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
         rms: Math.sqrt(sumSquares / output.length),
       });
     }
+    this.captureReference(output);
     return true;
+  }
+
+  captureReference(output) {
+    let copied = 0;
+    while (copied < output.length) {
+      if (this.referenceOffset === 0) {
+        this.referenceStartFrame = currentFrame + copied;
+      }
+      const count = Math.min(
+        output.length - copied,
+        this.reference.length - this.referenceOffset,
+      );
+      this.reference.set(
+        output.subarray(copied, copied + count),
+        this.referenceOffset,
+      );
+      this.referenceOffset += count;
+      copied += count;
+      if (this.referenceOffset === this.reference.length) {
+        const reference = this.reference;
+        this.port.postMessage(
+          {
+            type: "reference",
+            samples: reference.buffer,
+            endFrame: this.referenceStartFrame + reference.length,
+          },
+          [reference.buffer],
+        );
+        this.reference = new Float32Array(this.referenceFrameSize);
+        this.referenceOffset = 0;
+      }
+    }
   }
 
   dropCanceledCurrent() {
@@ -154,16 +189,12 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
       !this.completeGenerations.has(this.lastGenerationId) &&
       !this.underflowReported
     ) {
-      this.targetSamples = Math.min(
-        this.maximumTargetSamples,
-        this.targetSamples + Math.round(sampleRate * 0.01),
-      );
-      this.stableSamples = 0;
+      this.jitter.recordUnderflow();
       this.underflowReported = true;
       this.port.postMessage({
         type: "underflow",
         generationId: this.lastGenerationId,
-        targetMs: this.targetSamples / sampleRate * 1000,
+        targetMs: this.jitter.targetMs(),
       });
     }
     if (
@@ -182,7 +213,7 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
   postBufferState() {
     this.port.postMessage({
       type: "buffer",
-      targetMs: this.targetSamples / sampleRate * 1000,
+      targetMs: this.jitter.targetMs(),
       queuedMs: this.queuedSamples / sampleRate * 1000,
     });
   }

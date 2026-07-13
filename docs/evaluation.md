@@ -1,6 +1,6 @@
 # Evaluation and latency telemetry
 
-Openlive does not claim experiential parity without measurements. Protocol 0.3 emits generation-scoped `latency_mark` events from the gateway's monotonic clock:
+Openlive does not claim experiential parity without measurements. Protocol 1.0 emits generation-scoped `latency_mark` events from the gateway's monotonic clock:
 
 - `response_committed`;
 - `first_provider_event`;

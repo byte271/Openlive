@@ -4,22 +4,24 @@ Openlive is an open, model-neutral runtime for continuous voice agents. It separ
 
 ## Current status
 
-**Version 0.9 is an experimental runtime—not a GPT-Live equivalent.**
+**Version 1.0 is the first stable Openlive protocol/runtime release. It is not a GPT-Live-equivalent model.**
 
 Implemented:
 
 - Rust workspace with unsafe code forbidden and strict Clippy.
-- Dedicated audio/DSP crate and separated gateway configuration, session, and state modules.
+- Dedicated audio/DSP crate and separated gateway configuration, session, transport, and state modules.
 - Separated cascade streaming primitives and native realtime wire protocol mapping.
-- Versioned, timestamped JSON realtime protocol and deterministic replay.
+- Protocol 1.0 with JSON control events and compact binary PCM media packets.
+- Strict monotonic client/server sequence and media-time validation.
 - Chronos pause, overlap, reversible duck, hard-yield, and cancellation policy.
 - Browser-local speech confidence and gain ducking before a network round trip.
 - Browser playout acknowledgments for sent-versus-played audio tracking.
 - Adaptive server noise floor and playout-aware echo probability.
+- Sample-aligned browser output-reference correlation over a bounded 500 ms ring.
 - Long-lived bidirectional provider sessions that accept audio during output.
 - Deterministic answer leases, conversation versions, and stale-event suppression.
 - Provider commits carry conversation versions instead of relying on gateway patch-up.
-- Provider lifecycle conformance tests cover cancellation, monotonic offsets, and close.
+- Provider lifecycle conformance tests cover cancellation storms, stale generations, monotonic offsets, and close.
 - Asynchronous cognition task and result events.
 - Mock duplex provider for offline runtime development.
 - Configurable OpenAI-compatible ASR → LLM → PCM TTS provider.
@@ -31,14 +33,16 @@ Implemented:
 - Worklet-side generation cancellation with a short audible fade.
 - Endpointing prediction events that fuse speech duration, silence, and energy fall.
 - Barge-in repair context so the next answer knows it follows an interruption.
-- Browser output-reference level attached to microphone frames for echo-aware filtering.
-- Bounded WebSocket messages, provider queues, and captured audio.
+- Browser output correlation and RMS attached to binary microphone packets for echo-aware filtering.
+- Backpressure-aware media queues and throttled client telemetry preserve interaction deadlines.
+- Browser code split into protocol, audio session, DSP utilities, jitter control, and UI modules.
+- Rust and dependency-free Node tests cover media framing, correlation, jitter adaptation, and lifecycle behavior.
 
 Still missing:
 
 - A production-tested open-source native speech-to-speech worker.
-- WebRTC/Opus transport with packet-level jitter handling, FEC, and loss concealment.
-- True aligned acoustic echo-reference correlation and speaker attribution.
+- WebRTC/Opus transport with packet-level FEC and loss concealment.
+- Adaptive acoustic echo cancellation and target-speaker attribution.
 - Streaming ASR revisions and semantic endpointing.
 - Retrieval, tools, streaming safety, GPU scheduling, and production control plane.
 - Measured parity on Full-Duplex-Bench, VoiceBench, and network impairment suites.
@@ -55,7 +59,7 @@ Endpointing emits `endpointing_prediction` events before Chronos decisions. The 
 
 When a user hard-yields an assistant response, the gateway records a one-shot repair context. The next committed response receives instructions to prioritize the new user turn, avoid repeating the interrupted answer, and acknowledge corrections only when useful. Cascaded and realtime adapters both receive this hint.
 
-The playback worklet reports current output RMS to the capture path. The browser includes this reference level with each microphone frame, and the gateway suppresses echo-like input while preserving high-confidence target speech. This is not full acoustic echo cancellation, but it reduces false barge-in from speaker leakage.
+The playback worklet publishes sample-timed rendered reference frames. A bounded browser ring searches plausible acoustic delays with normalized cross-correlation, then sends echo confidence and output RMS in each binary microphone packet. The gateway fuses that evidence with its acoustic prior before allowing barge-in. This is not adaptive acoustic echo cancellation, but it is materially stronger than an unaligned output-level heuristic.
 
 ## Requirements
 
@@ -136,13 +140,15 @@ cargo fmt --all --check
 cargo check --workspace --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
+node --test apps/openlive-gateway/web/tests/*.test.js
 ```
 
 ## Workspace
 
 ```text
-apps/openlive-gateway/       Gateway, acoustic frontend, and browser console
-crates/openlive-protocol/    Events, profiles, and provider manifests
+apps/openlive-gateway/       Gateway, WebSocket transport, and modular browser console
+crates/openlive-audio/       Acoustic analysis and endpointing
+crates/openlive-protocol/    Control events, binary media codec, and provider manifests
 crates/openlive-provider/    Bidirectional mock, cascade, and realtime adapters
 crates/openlive-runtime/     Chronos, answer leases, and deterministic replay
 fixtures/                    Versioned event recordings
@@ -160,12 +166,12 @@ docs/                        Architecture and adapter guidance
 
 ## Next milestone
 
-1. WebRTC/Opus with aligned playout reference.
+1. WebRTC/Opus with FEC, PLC, and congestion-aware media transport.
 2. Streaming semantic endpointing and transcript revisions.
 3. A Moshi, PersonaPlex, or equivalent native duplex worker.
-4. Incremental LLM-to-TTS for the cascade adapter.
-5. Provider conformance and cancellation-deadline tests.
-6. Network impairment, echo, false-interruption, and long-session suites.
+4. Streaming safety intervention, retrieval, and tools.
+5. Cancellation-deadline and 30-minute provider certification.
+6. Full-Duplex-Bench, VoiceBench, and reproducible network-impairment reports.
 
 See [`docs/architecture.md`](docs/architecture.md) and [`docs/provider-adapters.md`](docs/provider-adapters.md).
 

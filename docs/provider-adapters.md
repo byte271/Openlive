@@ -23,7 +23,7 @@ pub trait RealtimeProvider: Send + Sync {
 - `CancelGeneration`;
 - `Close`.
 
-Outputs are typed `RealtimeEvent` values with a generation ID and media offset. This shape lets native duplex adapters consume new user audio while older output is still being generated or played.
+Outputs are typed control events or raw PCM frames with a generation ID and media offset. This avoids internal base64 conversion while letting native duplex adapters consume new user audio during output.
 
 ## Contract requirements
 
@@ -38,7 +38,7 @@ Outputs are typed `RealtimeEvent` values with a generation ID and media offset. 
 ### Audio
 
 - Declare exact sample rates, channels, and frame duration.
-- Use mono PCM for protocol 0.3.
+- Use mono signed 16-bit little-endian PCM for protocol 1.0.
 - Preserve monotonically increasing media offsets per generation.
 - Bound captured input and provider queues.
 - Do not emit empty frames to improve a latency score.

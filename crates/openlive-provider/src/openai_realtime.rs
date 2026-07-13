@@ -1,8 +1,9 @@
 use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use futures_util::{Sink, SinkExt, StreamExt};
 use openlive_protocol::{
     AudioCapabilities, ControlCapabilities, DuplexCapabilities, ErrorEvent, LicenseClass, Modality,
-    ModalityCapabilities, OutputAudioFrame, OutputTextDelta, OutputTextFinal, ProviderClass,
+    ModalityCapabilities, OutputTextDelta, OutputTextFinal, PcmAudioFrame, ProviderClass,
     ProviderLifecycleState, ProviderLimits, ProviderManifest, ProviderState, RealtimeEvent,
 };
 use serde_json::{json, Value};
@@ -18,8 +19,8 @@ use crate::{
         connection_request, duration_ms, pcm_duration_us, response_create_event,
         session_update_event,
     },
-    ProviderEmission, ProviderError, ProviderInput, ProviderSession, ProviderSessionRequest,
-    RealtimeProvider,
+    ProviderEmission, ProviderError, ProviderInput, ProviderOutput, ProviderSession,
+    ProviderSessionRequest, RealtimeProvider,
 };
 
 const SAMPLE_RATE: u32 = 24_000;
@@ -227,7 +228,7 @@ where
                 websocket_sender,
                 &json!({
                     "type": "input_audio_buffer.append",
-                    "audio": frame.audio_b64
+                    "audio": BASE64.encode(&frame.pcm)
                 }),
             )
             .await?;
@@ -327,18 +328,24 @@ async fn emit_audio_delta(
     let Some(audio_b64) = event.get("delta").and_then(Value::as_str) else {
         return;
     };
+    let Ok(pcm) = BASE64.decode(audio_b64) else {
+        return;
+    };
     let Some(response) = active.as_mut() else {
         return;
     };
-    let duration_us = pcm_duration_us(audio_b64);
+    let duration_us = pcm_duration_us(pcm.len());
     let emission = ProviderEmission {
         generation_id: Some(response.generation_id),
         media_offset_us: response.output_offset_us,
-        event: RealtimeEvent::OutputAudioFrame(OutputAudioFrame {
-            audio_b64: audio_b64.to_owned(),
+        output: ProviderOutput::Audio(PcmAudioFrame {
+            pcm,
             sample_rate: SAMPLE_RATE,
             channels: 1,
             frame_duration_ms: duration_ms(duration_us),
+            client_speech_probability: None,
+            client_output_level: None,
+            client_echo_probability: None,
         }),
     };
     response.output_offset_us = response.output_offset_us.saturating_add(duration_us);
@@ -361,9 +368,9 @@ async fn emit_text_delta(
         .send(ProviderEmission {
             generation_id: Some(response.generation_id),
             media_offset_us: response.output_offset_us,
-            event: RealtimeEvent::OutputTextDelta(OutputTextDelta {
+            output: ProviderOutput::Event(RealtimeEvent::OutputTextDelta(OutputTextDelta {
                 delta: delta.to_owned(),
-            }),
+            })),
         })
         .await;
 }
@@ -379,18 +386,18 @@ async fn finish_response(
         .send(ProviderEmission {
             generation_id: Some(response.generation_id),
             media_offset_us: response.output_offset_us,
-            event: RealtimeEvent::OutputTextFinal(OutputTextFinal {
+            output: ProviderOutput::Event(RealtimeEvent::OutputTextFinal(OutputTextFinal {
                 text: response.transcript,
-            }),
+            })),
         })
         .await;
     let _ = output_sender
         .send(ProviderEmission {
             generation_id: Some(response.generation_id),
             media_offset_us: response.output_offset_us,
-            event: RealtimeEvent::ProviderState(ProviderState {
+            output: ProviderOutput::Event(RealtimeEvent::ProviderState(ProviderState {
                 state: ProviderLifecycleState::Complete,
-            }),
+            })),
         })
         .await;
 }
@@ -425,7 +432,7 @@ async fn emit(
         .send(ProviderEmission {
             generation_id: Some(response.generation_id),
             media_offset_us: response.output_offset_us,
-            event,
+            output: ProviderOutput::Event(event),
         })
         .await
 }
@@ -441,11 +448,11 @@ async fn send_error(
         .send(ProviderEmission {
             generation_id,
             media_offset_us: media_time_us,
-            event: RealtimeEvent::Error(ErrorEvent {
+            output: ProviderOutput::Event(RealtimeEvent::Error(ErrorEvent {
                 code: code.to_owned(),
                 message,
                 recoverable: true,
-            }),
+            })),
         })
         .await;
 }

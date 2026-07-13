@@ -4,20 +4,23 @@ use axum::extract::ws::{Message, WebSocket};
 use futures_util::StreamExt;
 use openlive_audio::{AcousticFrontend, EndpointingTracker};
 use openlive_protocol::{
-    ErrorEvent, EventEnvelope, InteractionAction, LatencyMark, LatencyPhase, Observation,
-    OutputAudioCancel, OutputAudioPlayed, ProviderLifecycleState, ProviderManifest, RealtimeEvent,
-    SessionConfigured, SessionCreated, PROTOCOL_VERSION,
+    ErrorEvent, EventEnvelope, InteractionAction, LatencyMark, LatencyPhase, MediaKind,
+    MediaPacket, MediaTransport, Observation, OutputAudioCancel, OutputAudioPlayed, PcmAudioFrame,
+    ProviderLifecycleState, ProviderManifest, RealtimeEvent, SessionConfigured, SessionCreated,
+    PROTOCOL_VERSION,
 };
 use openlive_provider::{
-    ProviderEmission, ProviderInput, ProviderSessionRequest, RealtimeProvider,
+    ProviderEmission, ProviderInput, ProviderOutput, ProviderSessionRequest, RealtimeProvider,
 };
 use openlive_runtime::{AnswerLeaseManager, ChronosConfig, SessionEngine};
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, error::TrySendError};
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use crate::session_state::{ActiveGeneration, LatencyTracker, PlayoutTracker, RepairContext};
-use crate::transport::WebSocketTransport;
+use crate::session_state::{
+    ActiveGeneration, ClientTimeline, LatencyTracker, PlayoutTracker, RepairContext, TelemetryGate,
+};
+use crate::transport::{ServerMessage, WebSocketTransport};
 
 enum SessionCommand {
     ProviderEmission(ProviderEmission),
@@ -25,7 +28,7 @@ enum SessionCommand {
 
 struct SessionCoordinator {
     session_id: Uuid,
-    outgoing: mpsc::Sender<EventEnvelope>,
+    outgoing: mpsc::Sender<ServerMessage>,
     provider_input: mpsc::Sender<ProviderInput>,
     sequence: u64,
     engine: SessionEngine,
@@ -35,12 +38,15 @@ struct SessionCoordinator {
     acoustics: AcousticFrontend,
     playout: PlayoutTracker,
     repair: RepairContext,
+    client_timeline: ClientTimeline,
+    dropped_input_frames: u64,
+    telemetry_gate: TelemetryGate,
 }
 
 impl SessionCoordinator {
     fn new(
         session_id: Uuid,
-        outgoing: mpsc::Sender<EventEnvelope>,
+        outgoing: mpsc::Sender<ServerMessage>,
         provider_input: mpsc::Sender<ProviderInput>,
     ) -> Self {
         let profile = openlive_protocol::InteractionProfile::default();
@@ -56,6 +62,9 @@ impl SessionCoordinator {
             acoustics: AcousticFrontend::default(),
             playout: PlayoutTracker::default(),
             repair: RepairContext::default(),
+            client_timeline: ClientTimeline::default(),
+            dropped_input_frames: 0,
+            telemetry_gate: TelemetryGate::default(),
         }
     }
 
@@ -80,6 +89,7 @@ impl SessionCoordinator {
                 provider_class: manifest.provider_class,
                 input_sample_rate,
                 output_sample_rate,
+                media_transport: MediaTransport::WebsocketBinaryPcm,
             }),
         );
         self.send(event).await;
@@ -96,10 +106,6 @@ impl SessionCoordinator {
         let media_time_us = event.media_time_us;
         let parent_event_id = event.event_id;
         match event.event {
-            RealtimeEvent::InputAudioFrame(frame) => {
-                self.handle_audio_frame(frame, media_time_us, parent_event_id)
-                    .await;
-            }
             RealtimeEvent::SessionConfigured(SessionConfigured {
                 interaction_profile,
             }) => {
@@ -118,19 +124,38 @@ impl SessionCoordinator {
         }
     }
 
+    async fn handle_media(&mut self, packet: MediaPacket) {
+        if packet.kind != MediaKind::InputAudio || packet.generation_id.is_some() {
+            self.send_error(
+                packet.media_time_us,
+                "invalid_media_direction",
+                "client binary packets must contain input audio".to_owned(),
+            )
+            .await;
+            return;
+        }
+        if let Err(message) =
+            self.client_timeline
+                .observe(packet.sequence, "microphone", packet.media_time_us)
+        {
+            self.send_error(
+                packet.media_time_us,
+                "invalid_client_timeline",
+                message.to_owned(),
+            )
+            .await;
+            return;
+        }
+        self.handle_audio_frame(packet.audio, packet.media_time_us, Uuid::new_v4())
+            .await;
+    }
+
     async fn handle_audio_frame(
         &mut self,
-        frame: openlive_protocol::InputAudioFrame,
+        frame: PcmAudioFrame,
         media_time_us: u64,
         parent_event_id: Uuid,
     ) {
-        let _ = self
-            .provider_input
-            .send(ProviderInput::AudioFrame {
-                media_time_us,
-                frame: frame.clone(),
-            })
-            .await;
         let analysis = match self.acoustics.analyze(&frame, self.playout.is_active()) {
             Ok(analysis) => analysis,
             Err(message) => {
@@ -139,9 +164,41 @@ impl SessionCoordinator {
                 return;
             }
         };
+        match self.provider_input.try_send(ProviderInput::AudioFrame {
+            media_time_us,
+            frame: frame.clone(),
+        }) {
+            Ok(()) => self.dropped_input_frames = 0,
+            Err(TrySendError::Full(_)) => {
+                self.dropped_input_frames = self.dropped_input_frames.saturating_add(1);
+                if self.dropped_input_frames.is_power_of_two() {
+                    self.send_error(
+                        media_time_us,
+                        "provider_backpressure",
+                        format!(
+                            "dropped {} input frames while the provider was saturated",
+                            self.dropped_input_frames
+                        ),
+                    )
+                    .await;
+                }
+            }
+            Err(TrySendError::Closed(_)) => {
+                self.send_error(
+                    media_time_us,
+                    "provider_closed",
+                    "provider input channel closed".to_owned(),
+                )
+                .await;
+                return;
+            }
+        }
         let endpointing =
             self.endpointing
                 .observe(media_time_us, frame.frame_duration_ms, &analysis);
+        let publish_telemetry = self
+            .telemetry_gate
+            .should_publish(media_time_us, endpointing.should_respond);
         let prediction = self
             .envelope(
                 "endpointing",
@@ -149,7 +206,9 @@ impl SessionCoordinator {
                 RealtimeEvent::EndpointingPrediction(endpointing.clone()),
             )
             .with_parent(parent_event_id);
-        self.send(prediction).await;
+        if publish_telemetry {
+            self.send(prediction).await;
+        }
 
         let observation = self
             .envelope(
@@ -164,7 +223,9 @@ impl SessionCoordinator {
                 }),
             )
             .with_parent(parent_event_id);
-        self.send(observation.clone()).await;
+        if publish_telemetry {
+            self.send(observation.clone()).await;
+        }
         self.apply_observation(observation, media_time_us).await;
     }
 
@@ -172,6 +233,7 @@ impl SessionCoordinator {
         match self.engine.process(&observation) {
             Ok(decisions) => {
                 for mut decision in decisions {
+                    decision.sequence = next_sequence(&mut self.sequence);
                     let action = decision_action(&decision);
                     if matches!(action, Some(InteractionAction::HardYield)) {
                         if let Some(active) = self.active_generation.as_ref() {
@@ -210,6 +272,7 @@ impl SessionCoordinator {
         if self.active_generation.is_some() {
             return;
         }
+        self.endpointing.reset();
         let generation_id = Uuid::new_v4();
         let prompt_hint = self.repair.take_prompt();
         self.leases.issue(generation_id);
@@ -291,13 +354,16 @@ impl SessionCoordinator {
     }
 
     async fn handle_provider_emission(&mut self, emission: ProviderEmission) {
-        let Some(generation_id) = emission.generation_id else {
-            let event = self.envelope(
-                provider_stream_id(&emission.event),
-                emission.media_offset_us,
-                emission.event,
-            );
-            self.send(event).await;
+        let ProviderEmission {
+            generation_id,
+            media_offset_us,
+            output,
+        } = emission;
+        let Some(generation_id) = generation_id else {
+            if let ProviderOutput::Event(event) = output {
+                let event = self.envelope(provider_stream_id(&event), media_offset_us, event);
+                self.send(event).await;
+            }
             return;
         };
         if !self.leases.accepts(generation_id) {
@@ -310,29 +376,38 @@ impl SessionCoordinator {
         else {
             return;
         };
-        let latency_marks = active.latency.observe(&emission.event);
-        let media_time_us = active
-            .base_media_time_us
-            .saturating_add(emission.media_offset_us);
+        let latency_marks = match &output {
+            ProviderOutput::Event(event) => active.latency.observe(event),
+            ProviderOutput::Audio(_) => active.latency.observe_audio(),
+        };
+        let media_time_us = active.base_media_time_us.saturating_add(media_offset_us);
         for mark in latency_marks {
             self.send_latency(media_time_us, generation_id, mark).await;
         }
-        if matches!(emission.event, RealtimeEvent::OutputAudioFrame(_)) {
-            self.playout.sent(media_time_us);
-        }
         let is_complete = matches!(
-            &emission.event,
-            RealtimeEvent::ProviderState(state)
+            &output,
+            ProviderOutput::Event(RealtimeEvent::ProviderState(state))
                 if state.state == ProviderLifecycleState::Complete
         );
-        let event = self
-            .envelope(
-                provider_stream_id(&emission.event),
-                media_time_us,
-                emission.event,
-            )
-            .with_generation(generation_id);
-        self.send(event).await;
+        match output {
+            ProviderOutput::Event(event) => {
+                let event = self
+                    .envelope(provider_stream_id(&event), media_time_us, event)
+                    .with_generation(generation_id);
+                self.send(event).await;
+            }
+            ProviderOutput::Audio(audio) => {
+                self.playout.sent(media_time_us);
+                let packet = MediaPacket {
+                    kind: MediaKind::OutputAudio,
+                    sequence: next_sequence(&mut self.sequence),
+                    media_time_us,
+                    generation_id: Some(generation_id),
+                    audio,
+                };
+                self.send_media(packet);
+            }
+        }
         if is_complete {
             self.engine.mark_response_complete(generation_id);
             self.active_generation = None;
@@ -380,6 +455,36 @@ impl SessionCoordinator {
             .await;
             return None;
         }
+        let Some(expected_stream_id) = client_stream_id(&event.event) else {
+            self.send_error(
+                event.media_time_us,
+                "unsupported_client_event",
+                "this event type cannot be sent by a client".to_owned(),
+            )
+            .await;
+            return None;
+        };
+        if event.stream_id != expected_stream_id {
+            self.send_error(
+                event.media_time_us,
+                "invalid_client_stream",
+                format!("expected stream_id {expected_stream_id}"),
+            )
+            .await;
+            return None;
+        }
+        if let Err(message) =
+            self.client_timeline
+                .observe(event.sequence, &event.stream_id, event.media_time_us)
+        {
+            self.send_error(
+                event.media_time_us,
+                "invalid_client_timeline",
+                message.to_owned(),
+            )
+            .await;
+            return None;
+        }
         Some(event)
     }
 
@@ -419,8 +524,25 @@ impl SessionCoordinator {
     }
 
     async fn send(&self, event: EventEnvelope) {
-        if self.outgoing.send(event).await.is_err() {
+        if self
+            .outgoing
+            .send(ServerMessage::Control(event))
+            .await
+            .is_err()
+        {
             warn!("session writer closed");
+        }
+    }
+
+    fn send_media(&self, packet: MediaPacket) {
+        match self.outgoing.try_send(ServerMessage::Media(packet)) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) => {
+                warn!("dropping output media because the client transport is saturated");
+            }
+            Err(TrySendError::Closed(_)) => {
+                warn!("session writer closed");
+            }
         }
     }
 }
@@ -465,8 +587,16 @@ pub(crate) async fn run(socket: WebSocket, provider: Arc<dyn RealtimeProvider>) 
                 };
                 match incoming {
                     Ok(Message::Text(text)) => coordinator.handle_text(&text).await,
+                    Ok(Message::Binary(binary)) => match MediaPacket::decode(&binary) {
+                        Ok(packet) => coordinator.handle_media(packet).await,
+                        Err(error) => {
+                            coordinator
+                                .send_error(0, "invalid_media_packet", error.to_string())
+                                .await;
+                        }
+                    },
                     Ok(Message::Close(_)) | Err(_) => break,
-                    Ok(Message::Binary(_) | Message::Ping(_) | Message::Pong(_)) => {}
+                    Ok(Message::Ping(_) | Message::Pong(_)) => {}
                 }
             }
             command = command_receiver.recv() => {
@@ -493,11 +623,17 @@ fn decision_action(event: &EventEnvelope) -> Option<InteractionAction> {
     }
 }
 
+fn client_stream_id(event: &RealtimeEvent) -> Option<&'static str> {
+    match event {
+        RealtimeEvent::SessionConfigured(_) | RealtimeEvent::Ping => Some("session"),
+        RealtimeEvent::OutputAudioPlayed(_) => Some("assistant_playout"),
+        _ => None,
+    }
+}
+
 fn provider_stream_id(event: &RealtimeEvent) -> &'static str {
     match event {
-        RealtimeEvent::OutputAudioFrame(_) | RealtimeEvent::OutputAudioCancel(_) => {
-            "assistant_audio"
-        }
+        RealtimeEvent::OutputAudioCancel(_) => "assistant_audio",
         RealtimeEvent::OutputTextDelta(_) | RealtimeEvent::OutputTextFinal(_) => "assistant_text",
         RealtimeEvent::TaskCreated(_) | RealtimeEvent::TaskResult(_) => "cognition",
         RealtimeEvent::LatencyMark(_) => "telemetry",

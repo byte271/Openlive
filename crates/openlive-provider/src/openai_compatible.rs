@@ -1,11 +1,10 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use futures_util::StreamExt;
 use openlive_protocol::{
     AudioCapabilities, ControlCapabilities, DuplexCapabilities, ErrorEvent, LicenseClass, Modality,
-    ModalityCapabilities, OutputAudioFrame, OutputTextDelta, OutputTextFinal, ProviderClass,
+    ModalityCapabilities, OutputTextDelta, OutputTextFinal, PcmAudioFrame, ProviderClass,
     ProviderLifecycleState, ProviderLimits, ProviderManifest, ProviderState, RealtimeEvent,
     TaskCreated, TaskResult,
 };
@@ -20,8 +19,8 @@ use crate::{
     openai_compatible_streaming::{
         stream_json_completion, stream_sse, CompletionEvent, PcmFramer, SpeechSegmenter,
     },
-    ProviderEmission, ProviderError, ProviderInput, ProviderSession, ProviderSessionRequest,
-    RealtimeProvider,
+    ProviderEmission, ProviderError, ProviderInput, ProviderOutput, ProviderSession,
+    ProviderSessionRequest, RealtimeProvider,
 };
 
 const INPUT_SAMPLE_RATE: u32 = 16_000;
@@ -545,29 +544,29 @@ async fn emit_pcm_frame(
     media_offset_us: u64,
     frame: Vec<u8>,
 ) -> Result<(), String> {
-    send(
-        sender,
-        Some(generation_id),
-        media_offset_us,
-        RealtimeEvent::OutputAudioFrame(OutputAudioFrame {
-            audio_b64: BASE64.encode(frame),
-            sample_rate: OUTPUT_SAMPLE_RATE,
-            channels: 1,
-            frame_duration_ms: FRAME_DURATION_MS,
-        }),
-    )
-    .await
-    .map_err(|error| error.to_string())
+    sender
+        .send(ProviderEmission {
+            generation_id: Some(generation_id),
+            media_offset_us,
+            output: ProviderOutput::Audio(PcmAudioFrame {
+                pcm: frame,
+                sample_rate: OUTPUT_SAMPLE_RATE,
+                channels: 1,
+                frame_duration_ms: FRAME_DURATION_MS,
+                client_speech_probability: None,
+                client_output_level: None,
+                client_echo_probability: None,
+            }),
+        })
+        .await
+        .map_err(|error| error.to_string())
 }
 
-fn append_audio(audio: &mut Vec<u8>, frame: &openlive_protocol::InputAudioFrame) {
+fn append_audio(audio: &mut Vec<u8>, frame: &PcmAudioFrame) {
     if frame.channels != 1 || frame.sample_rate != INPUT_SAMPLE_RATE {
         return;
     }
-    let Ok(bytes) = BASE64.decode(&frame.audio_b64) else {
-        return;
-    };
-    audio.extend_from_slice(&bytes);
+    audio.extend_from_slice(&frame.pcm);
     let maximum = usize::try_from(INPUT_SAMPLE_RATE).unwrap_or_default() * 2 * MAX_CAPTURE_SECONDS;
     if audio.len() > maximum {
         let overflow = audio.len() - maximum;
@@ -659,7 +658,7 @@ async fn send(
         .send(ProviderEmission {
             generation_id,
             media_offset_us,
-            event,
+            output: ProviderOutput::Event(event),
         })
         .await
 }
@@ -737,13 +736,14 @@ mod tests {
         let maximum =
             usize::try_from(INPUT_SAMPLE_RATE).unwrap_or_default() * 2 * MAX_CAPTURE_SECONDS;
         let mut audio = vec![0_u8; maximum];
-        let frame = openlive_protocol::InputAudioFrame {
-            audio_b64: BASE64.encode(vec![1_u8; 640]),
+        let frame = PcmAudioFrame {
+            pcm: vec![1_u8; 640],
             sample_rate: INPUT_SAMPLE_RATE,
             channels: 1,
             frame_duration_ms: FRAME_DURATION_MS,
             client_speech_probability: None,
             client_output_level: None,
+            client_echo_probability: None,
         };
         append_audio(&mut audio, &frame);
         assert_eq!(audio.len(), maximum);

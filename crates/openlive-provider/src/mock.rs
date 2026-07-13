@@ -1,18 +1,17 @@
 use std::{f32::consts::TAU, time::Duration};
 
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use openlive_protocol::{
     AudioCapabilities, ControlCapabilities, DuplexCapabilities, LicenseClass, Modality,
-    ModalityCapabilities, OutputAudioFrame, OutputTextDelta, OutputTextFinal, ProviderClass,
+    ModalityCapabilities, OutputTextDelta, OutputTextFinal, PcmAudioFrame, ProviderClass,
     ProviderLifecycleState, ProviderLimits, ProviderManifest, ProviderState, RealtimeEvent,
 };
 use tokio::{sync::mpsc, time::sleep};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    ProviderEmission, ProviderError, ProviderInput, ProviderSession, ProviderSessionRequest,
-    RealtimeProvider,
+    ProviderEmission, ProviderError, ProviderInput, ProviderOutput, ProviderSession,
+    ProviderSessionRequest, RealtimeProvider,
 };
 
 #[derive(Debug, Clone)]
@@ -132,6 +131,9 @@ async fn generate_mock_response(
     frame_duration_ms: u16,
     cancellation: CancellationToken,
 ) {
+    if cancellation.is_cancelled() {
+        return;
+    }
     let response = if prompt.trim().is_empty() {
         "Openlive detected a completed speech turn.".to_owned()
     } else {
@@ -188,19 +190,22 @@ async fn generate_mock_response(
             frequency,
             frame_index * u64::from(frame_duration_ms),
         );
-        if send(
-            &sender,
-            generation_id,
-            frame_index * u64::from(frame_duration_ms) * 1_000,
-            RealtimeEvent::OutputAudioFrame(OutputAudioFrame {
-                audio_b64: BASE64.encode(pcm_i16_to_le_bytes(&pcm)),
-                sample_rate,
-                channels: 1,
-                frame_duration_ms,
-            }),
-        )
-        .await
-        .is_err()
+        if sender
+            .send(ProviderEmission {
+                generation_id: Some(generation_id),
+                media_offset_us: frame_index * u64::from(frame_duration_ms) * 1_000,
+                output: ProviderOutput::Audio(PcmAudioFrame {
+                    pcm: pcm_i16_to_le_bytes(&pcm),
+                    sample_rate,
+                    channels: 1,
+                    frame_duration_ms,
+                    client_speech_probability: None,
+                    client_output_level: None,
+                    client_echo_probability: None,
+                }),
+            })
+            .await
+            .is_err()
         {
             return;
         }
@@ -239,7 +244,7 @@ async fn send(
         .send(ProviderEmission {
             generation_id: Some(generation_id),
             media_offset_us,
-            event,
+            output: ProviderOutput::Event(event),
         })
         .await
 }

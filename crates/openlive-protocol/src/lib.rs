@@ -1,8 +1,12 @@
+mod media;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: &str = "0.3";
+pub const PROTOCOL_VERSION: &str = "1.0";
+
+pub use media::{MediaKind, MediaPacket, MediaPacketError, PcmAudioFrame};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EventEnvelope {
@@ -78,13 +82,11 @@ impl EventEnvelope {
 pub enum RealtimeEvent {
     SessionCreated(SessionCreated),
     SessionConfigured(SessionConfigured),
-    InputAudioFrame(InputAudioFrame),
     Observation(Observation),
     EndpointingPrediction(EndpointingPrediction),
     InteractionDecision(InteractionDecision),
     OutputTextDelta(OutputTextDelta),
     OutputTextFinal(OutputTextFinal),
-    OutputAudioFrame(OutputAudioFrame),
     OutputAudioCancel(OutputAudioCancel),
     OutputAudioPlayed(OutputAudioPlayed),
     ProviderState(ProviderState),
@@ -102,23 +104,18 @@ pub struct SessionCreated {
     pub provider_class: ProviderClass,
     pub input_sample_rate: u32,
     pub output_sample_rate: u32,
+    pub media_transport: MediaTransport,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaTransport {
+    WebsocketBinaryPcm,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SessionConfigured {
     pub interaction_profile: InteractionProfile,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct InputAudioFrame {
-    pub audio_b64: String,
-    pub sample_rate: u32,
-    pub channels: u8,
-    pub frame_duration_ms: u16,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub client_speech_probability: Option<f32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub client_output_level: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -157,14 +154,6 @@ pub struct OutputTextDelta {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OutputTextFinal {
     pub text: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct OutputAudioFrame {
-    pub audio_b64: String,
-    pub sample_rate: u32,
-    pub channels: u8,
-    pub frame_duration_ms: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

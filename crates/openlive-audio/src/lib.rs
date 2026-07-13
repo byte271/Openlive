@@ -1,5 +1,4 @@
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use openlive_protocol::{EndpointingPrediction, InputAudioFrame};
+use openlive_protocol::{EndpointingPrediction, PcmAudioFrame};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AudioAnalysis {
@@ -27,27 +26,24 @@ impl AcousticFrontend {
     ///
     /// # Errors
     ///
-    /// Returns an error for unsupported audio metadata, malformed base64, or
-    /// a PCM payload whose byte length does not match its declared duration.
+    /// Returns an error for unsupported audio metadata or a PCM payload whose
+    /// byte length does not match its declared duration.
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
     pub fn analyze(
         &mut self,
-        frame: &InputAudioFrame,
+        frame: &PcmAudioFrame,
         assistant_playout_active: bool,
     ) -> Result<AudioAnalysis, String> {
         validate_frame(frame)?;
-        let bytes = BASE64
-            .decode(&frame.audio_b64)
-            .map_err(|_| "audio_b64 is not valid base64".to_owned())?;
         let expected = expected_pcm_bytes(frame);
-        if bytes.len() != expected {
+        if frame.pcm.len() != expected {
             return Err(format!(
                 "PCM length mismatch: expected {expected} bytes, received {}",
-                bytes.len()
+                frame.pcm.len()
             ));
         }
 
-        let rms = pcm_rms(&bytes);
+        let rms = pcm_rms(&frame.pcm);
         let client_probability = frame
             .client_speech_probability
             .unwrap_or(0.0)
@@ -63,13 +59,18 @@ impl AcousticFrontend {
         } else {
             server_probability
         };
-        let echo_probability = estimate_echo_probability(
+        let server_echo_probability = estimate_echo_probability(
             assistant_playout_active,
             output_level,
             rms,
             server_probability,
             client_probability,
         );
+        let echo_probability = frame
+            .client_echo_probability
+            .map_or(server_echo_probability, |client_echo| {
+                server_echo_probability.mul_add(0.35, client_echo.clamp(0.0, 1.0) * 0.65)
+            });
         let speech_probability =
             (raw_speech_probability * (1.0 - echo_probability * 0.72)).clamp(0.0, 1.0);
         let target_speaker_probability =
@@ -94,6 +95,10 @@ pub struct EndpointingTracker {
 }
 
 impl EndpointingTracker {
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
+
     #[allow(clippy::cast_precision_loss)]
     pub fn observe(
         &mut self,
@@ -163,7 +168,7 @@ impl EndpointingTracker {
     }
 }
 
-fn validate_frame(frame: &InputAudioFrame) -> Result<(), String> {
+fn validate_frame(frame: &PcmAudioFrame) -> Result<(), String> {
     if frame.channels != 1 {
         return Err("only mono input is supported".to_owned());
     }
@@ -176,7 +181,7 @@ fn validate_frame(frame: &InputAudioFrame) -> Result<(), String> {
     Ok(())
 }
 
-fn expected_pcm_bytes(frame: &InputAudioFrame) -> usize {
+fn expected_pcm_bytes(frame: &PcmAudioFrame) -> usize {
     usize::try_from(
         u64::from(frame.sample_rate)
             * u64::from(frame.frame_duration_ms)
@@ -233,22 +238,23 @@ fn empty_prediction() -> EndpointingPrediction {
 mod tests {
     use super::*;
 
-    fn pcm_frame(sample: i16, client_probability: f32, output_level: f32) -> InputAudioFrame {
+    fn pcm_frame(sample: i16, client_probability: f32, output_level: f32) -> PcmAudioFrame {
         let bytes: Vec<u8> = (0..320).flat_map(|_| sample.to_le_bytes()).collect();
-        InputAudioFrame {
-            audio_b64: BASE64.encode(bytes),
+        PcmAudioFrame {
+            pcm: bytes,
             sample_rate: 16_000,
             channels: 1,
             frame_duration_ms: 20,
             client_speech_probability: Some(client_probability),
             client_output_level: Some(output_level),
+            client_echo_probability: None,
         }
     }
 
     #[test]
     fn rejects_wrong_frame_length() {
         let mut frame = pcm_frame(0, 0.0, 0.0);
-        frame.audio_b64 = BASE64.encode([0_u8; 4]);
+        frame.pcm = vec![0_u8; 4];
         let error = AcousticFrontend::default()
             .analyze(&frame, false)
             .expect_err("length");
@@ -276,6 +282,17 @@ mod tests {
     }
 
     #[test]
+    fn aligned_client_echo_reference_suppresses_false_barge_in() {
+        let mut frame = pcm_frame(9_000, 0.95, 0.7);
+        frame.client_echo_probability = Some(0.98);
+        let analysis = AcousticFrontend::default()
+            .analyze(&frame, true)
+            .expect("analysis");
+        assert!(analysis.echo_probability > 0.8);
+        assert!(analysis.target_speaker_probability < 0.2);
+    }
+
+    #[test]
     fn endpointing_waits_through_short_pause() {
         let mut tracker = EndpointingTracker::default();
         let speech = AudioAnalysis {
@@ -295,5 +312,7 @@ mod tests {
         }
         assert!(!tracker.observe(560_000, 20, &silence).should_respond);
         assert!(tracker.observe(1_080_000, 20, &silence).should_respond);
+        tracker.reset();
+        assert!(!tracker.observe(1_100_000, 20, &silence).should_respond);
     }
 }

@@ -1,4 +1,3 @@
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde_json::{json, Value};
 use tokio_tungstenite::tungstenite::{
     client::IntoClientRequest,
@@ -9,7 +8,6 @@ use url::Url;
 use crate::ProviderError;
 
 const SAMPLE_RATE: u32 = 24_000;
-const DEFAULT_FRAME_DURATION_MS: u16 = 20;
 
 pub(super) fn session_update_event(instructions: &str, voice: &str) -> Value {
     json!({
@@ -68,11 +66,8 @@ pub(super) fn duration_ms(duration_us: u64) -> u16 {
         .max(1)
 }
 
-pub(super) fn pcm_duration_us(audio_b64: &str) -> u64 {
-    let Ok(bytes) = BASE64.decode(audio_b64) else {
-        return u64::from(DEFAULT_FRAME_DURATION_MS) * 1_000;
-    };
-    u64::try_from(bytes.len()).unwrap_or_default() * 1_000_000 / (u64::from(SAMPLE_RATE) * 2)
+pub(super) fn pcm_duration_us(byte_len: usize) -> u64 {
+    u64::try_from(byte_len).unwrap_or_default() * 1_000_000 / (u64::from(SAMPLE_RATE) * 2)
 }
 
 #[cfg(test)]
@@ -89,8 +84,7 @@ mod tests {
 
     #[test]
     fn pcm_duration_uses_24khz_mono_s16() {
-        let audio = BASE64.encode(vec![0_u8; 960]);
-        assert_eq!(pcm_duration_us(&audio), 20_000);
+        assert_eq!(pcm_duration_us(960), 20_000);
     }
 
     #[test]

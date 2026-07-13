@@ -4,11 +4,13 @@ class OpenliveCaptureProcessor extends AudioWorkletProcessor {
     this.frameSize = Math.max(1, Math.round(sampleRate * 0.02));
     this.pending = [];
     this.pendingLength = 0;
+    this.nextFrame = null;
   }
 
   process(inputs) {
     const channel = inputs[0]?.[0];
     if (!channel) return true;
+    this.nextFrame ??= currentFrame;
 
     this.pending.push(new Float32Array(channel));
     this.pendingLength += channel.length;
@@ -29,7 +31,11 @@ class OpenliveCaptureProcessor extends AudioWorkletProcessor {
         }
         this.pendingLength -= copied;
       }
-      this.port.postMessage(frame, [frame.buffer]);
+      this.nextFrame += this.frameSize;
+      this.port.postMessage(
+        { samples: frame.buffer, endFrame: this.nextFrame },
+        [frame.buffer],
+      );
     }
     return true;
   }
