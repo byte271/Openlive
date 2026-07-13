@@ -188,6 +188,12 @@ function handleEvent(envelope) {
       payload.speech_probability.toFixed(2);
     return;
   }
+  if (type === "endpointing_prediction") {
+    if (payload.should_respond) {
+      addTimeline("endpoint", payload.reason);
+    }
+    return;
+  }
   if (type === "interaction_decision") {
     elements.interactionState.textContent = payload.action;
     addTimeline(payload.action, payload.reason);

@@ -89,6 +89,17 @@ The included cascade provider demonstrates configurable ASR, cognition, TTS, and
 
 The cascade cognition path streams chat deltas into an early phrase segmenter. A sequential speech worker begins TTS at the first complete clause while later text is still arriving, then packetizes response-body PCM into 20 ms frames. This improves onset without allowing overlapping phrase audio.
 
+## Endpointing sidecar
+
+The gateway emits `endpointing_prediction` events from a lightweight sidecar before constructing Chronos observations. The sidecar tracks:
+
+- accumulated speech duration;
+- current silence duration;
+- adaptive speech probability;
+- falling RMS energy over recent frames.
+
+It derives separate semantic-completeness and prosodic-finality scores. Chronos then consumes these scores instead of a single silence-only completion number. This reduces premature responses on short hesitations and keeps turn completion explainable in traces. It is still a heuristic; learned endpointing with transcript revisions is a later stage.
+
 ## Determinism
 
 `SessionEngine`:

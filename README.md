@@ -4,7 +4,7 @@ Openlive is an open, model-neutral runtime for continuous voice agents. It separ
 
 ## Current status
 
-**Version 0.5 is an experimental runtime—not a GPT-Live equivalent.**
+**Version 0.6 is an experimental runtime—not a GPT-Live equivalent.**
 
 Implemented:
 
@@ -25,6 +25,7 @@ Implemented:
 - Sample-accurate AudioWorklet playback instead of one browser node per frame.
 - Adaptive 30–120 ms playback target with underflow-driven jitter recovery.
 - Worklet-side generation cancellation with a short audible fade.
+- Endpointing prediction events that fuse speech duration, silence, and energy fall.
 - Bounded WebSocket messages, provider queues, and captured audio.
 
 Still missing:
@@ -43,6 +44,8 @@ The native realtime adapter preserves a continuous speech session and maps audio
 The cascade adapter now consumes chat SSE incrementally, sends completed clauses to a sequential TTS worker, and packetizes streamed PCM into 20 ms frames. This reduces first-audio onset when endpoints support streaming, but multiple phrase-level TTS requests can introduce prosody seams.
 
 Browser playback now runs through a persistent AudioWorklet queue. It starts with a 40 ms target, raises the target after underflow, slowly reduces it during stable playback, reports frame completion from the render thread, and fades an exact generation during cancellation.
+
+Endpointing now emits `endpointing_prediction` events before Chronos decisions. The local sidecar estimates semantic completeness and prosodic finality from duration, silence, and energy shape instead of using silence alone. It remains heuristic until a learned semantic endpointing model or streaming ASR revisions are integrated.
 
 ## Requirements
 

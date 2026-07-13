@@ -14,9 +14,9 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use clap::{Parser, ValueEnum};
 use futures_util::{SinkExt, StreamExt};
 use openlive_protocol::{
-    ErrorEvent, EventEnvelope, InputAudioFrame, InteractionAction, LatencyMark, LatencyPhase,
-    Observation, OutputAudioCancel, OutputAudioPlayed, RealtimeEvent, SessionConfigured,
-    SessionCreated, TaskCreated, TaskResult, PROTOCOL_VERSION,
+    EndpointingPrediction, ErrorEvent, EventEnvelope, InputAudioFrame, InteractionAction,
+    LatencyMark, LatencyPhase, Observation, OutputAudioCancel, OutputAudioPlayed, RealtimeEvent,
+    SessionConfigured, SessionCreated, TaskCreated, TaskResult, PROTOCOL_VERSION,
 };
 use openlive_provider::{
     MockDuplexProvider, OpenAiCompatibleConfig, OpenAiCompatibleProvider, OpenAiRealtimeConfig,
@@ -349,10 +349,28 @@ async fn run_session(socket: WebSocket, provider: Arc<dyn RealtimeProvider>) {
                                         continue;
                                     }
                                 };
-                                let completion = turn_tracker.observe(
+                                let endpointing = turn_tracker.observe(
                                     media_time_us,
-                                    features.speech_probability,
+                                    frame.frame_duration_ms,
+                                    &features,
                                 );
+                                let prediction = EventEnvelope::new(
+                                    session_id,
+                                    "endpointing",
+                                    next_sequence(&mut sequence),
+                                    media_time_us,
+                                    RealtimeEvent::EndpointingPrediction(
+                                        EndpointingPrediction {
+                                            speech_duration_ms: endpointing.speech_duration_ms,
+                                            silence_duration_ms: endpointing.silence_duration_ms,
+                                            semantic_completeness: endpointing.semantic_completeness,
+                                            prosodic_finality: endpointing.prosodic_finality,
+                                            should_respond: endpointing.should_respond,
+                                            reason: endpointing.reason,
+                                        },
+                                    ),
+                                ).with_parent(parent_event_id);
+                                send_event(&outgoing_sender, prediction).await;
                                 let observation = EventEnvelope::new(
                                     session_id,
                                     "observations",
@@ -362,8 +380,8 @@ async fn run_session(socket: WebSocket, provider: Arc<dyn RealtimeProvider>) {
                                         speech_probability: features.speech_probability,
                                         echo_probability: features.echo_probability,
                                         target_speaker_probability: 1.0,
-                                        semantic_completeness: completion,
-                                        prosodic_finality: completion,
+                                        semantic_completeness: endpointing.semantic_completeness,
+                                        prosodic_finality: endpointing.prosodic_finality,
                                     }),
                                 ).with_parent(parent_event_id);
                                 send_event(&outgoing_sender, observation.clone()).await;
@@ -696,29 +714,91 @@ async fn parse_client_event(
 struct TurnTracker {
     speech_started_us: Option<u64>,
     silence_started_us: Option<u64>,
+    speech_duration_ms: u32,
+    silence_duration_ms: u32,
+    previous_rms: f32,
+    falling_energy_frames: u8,
 }
 
 impl TurnTracker {
     #[allow(clippy::cast_precision_loss)]
-    fn observe(&mut self, media_time_us: u64, speech_probability: f32) -> f32 {
-        if speech_probability >= 0.62 {
+    fn observe(
+        &mut self,
+        media_time_us: u64,
+        frame_duration_ms: u16,
+        features: &AcousticFeatures,
+    ) -> EndpointingSignals {
+        if features.speech_probability >= 0.62 {
             self.speech_started_us.get_or_insert(media_time_us);
             self.silence_started_us = None;
-            return 0.1;
+            self.silence_duration_ms = 0;
+            self.speech_duration_ms = self
+                .speech_duration_ms
+                .saturating_add(u32::from(frame_duration_ms));
+            self.update_energy_shape(features.rms);
+            return EndpointingSignals {
+                speech_duration_ms: self.speech_duration_ms,
+                silence_duration_ms: 0,
+                semantic_completeness: 0.1,
+                prosodic_finality: 0.1,
+                should_respond: false,
+                reason: "speech is active".to_owned(),
+            };
         }
         if self.speech_started_us.is_none() {
-            return 0.0;
+            self.previous_rms = features.rms;
+            return EndpointingSignals::default();
         }
         let silence_start = *self.silence_started_us.get_or_insert(media_time_us);
-        let silence_ms = media_time_us.saturating_sub(silence_start) / 1_000;
-        (silence_ms as f32 / 500.0).clamp(0.0, 1.0)
+        self.silence_duration_ms =
+            u32::try_from(media_time_us.saturating_sub(silence_start) / 1_000).unwrap_or(u32::MAX);
+        self.update_energy_shape(features.rms);
+
+        let silence_score = (self.silence_duration_ms as f32 / 520.0).clamp(0.0, 1.0);
+        let duration_score = (self.speech_duration_ms as f32 / 700.0).clamp(0.0, 1.0);
+        let energy_fall_score = (f32::from(self.falling_energy_frames) / 6.0).clamp(0.0, 1.0);
+        let semantic_completeness = (silence_score * 0.72 + duration_score * 0.28).clamp(0.0, 1.0);
+        let prosodic_finality = (silence_score * 0.55 + energy_fall_score * 0.45).clamp(0.0, 1.0);
+        let should_respond = semantic_completeness >= 0.74 && prosodic_finality >= 0.55;
+        EndpointingSignals {
+            speech_duration_ms: self.speech_duration_ms,
+            silence_duration_ms: self.silence_duration_ms,
+            semantic_completeness,
+            prosodic_finality,
+            should_respond,
+            reason: if should_respond {
+                "speech ended with sufficient silence and falling energy".to_owned()
+            } else {
+                "waiting for more silence or clearer prosodic finality".to_owned()
+            },
+        }
     }
+
+    fn update_energy_shape(&mut self, rms: f32) {
+        if rms < self.previous_rms * 0.82 {
+            self.falling_energy_frames = self.falling_energy_frames.saturating_add(1).min(12);
+        } else if rms > self.previous_rms * 1.12 {
+            self.falling_energy_frames = self.falling_energy_frames.saturating_sub(1);
+        }
+        self.previous_rms = rms;
+    }
+}
+
+#[derive(Debug, Default)]
+struct EndpointingSignals {
+    speech_duration_ms: u32,
+    silence_duration_ms: u32,
+    semantic_completeness: f32,
+    prosodic_finality: f32,
+    should_respond: bool,
+    reason: String,
 }
 
 #[derive(Debug)]
 struct AcousticFeatures {
     speech_probability: f32,
     echo_probability: f32,
+    rms: f32,
 }
 
 #[derive(Debug)]
@@ -797,6 +877,7 @@ impl AcousticFrontend {
         Ok(AcousticFeatures {
             speech_probability,
             echo_probability,
+            rms,
         })
     }
 }
@@ -809,6 +890,7 @@ fn provider_stream_id(event: &RealtimeEvent) -> &'static str {
         RealtimeEvent::OutputTextDelta(_) | RealtimeEvent::OutputTextFinal(_) => "assistant_text",
         RealtimeEvent::TaskCreated(_) | RealtimeEvent::TaskResult(_) => "cognition",
         RealtimeEvent::LatencyMark(_) => "telemetry",
+        RealtimeEvent::EndpointingPrediction(_) => "endpointing",
         _ => "provider",
     }
 }
@@ -913,5 +995,28 @@ mod tests {
             .analyze(&frame, false)
             .expect("features");
         assert!(features.speech_probability > 0.9);
+    }
+
+    #[test]
+    fn endpointing_waits_for_finality_after_short_pause() {
+        let mut tracker = TurnTracker::default();
+        let speech = AcousticFeatures {
+            speech_probability: 0.9,
+            echo_probability: 0.0,
+            rms: 0.05,
+        };
+        let silence = AcousticFeatures {
+            speech_probability: 0.1,
+            echo_probability: 0.0,
+            rms: 0.005,
+        };
+        for index in 0..25 {
+            tracker.observe(index * 20_000, 20, &speech);
+        }
+        let early = tracker.observe(560_000, 20, &silence);
+        assert!(!early.should_respond);
+        let final_prediction = tracker.observe(1_080_000, 20, &silence);
+        assert!(final_prediction.should_respond);
+        assert!(final_prediction.prosodic_finality > 0.55);
     }
 }

@@ -39,6 +39,7 @@ Provider latency alone is insufficient. A production benchmark must separately m
 8. speaker-attribution errors;
 9. response latency p50, p95, and p99;
 10. degradation under jitter, loss, reordering, echo, and background speech.
+11. endpointing false-commit rate during hesitation and mid-thought pauses.
 
 ## Initial engineering budgets
 

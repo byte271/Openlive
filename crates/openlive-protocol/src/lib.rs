@@ -81,6 +81,7 @@ pub enum RealtimeEvent {
     InputAudioFrame(InputAudioFrame),
     InputAudioGap(InputAudioGap),
     Observation(Observation),
+    EndpointingPrediction(EndpointingPrediction),
     InteractionDecision(InteractionDecision),
     ResponseRequested(ResponseRequested),
     OutputTextDelta(OutputTextDelta),
@@ -132,6 +133,16 @@ pub struct Observation {
     pub target_speaker_probability: f32,
     pub semantic_completeness: f32,
     pub prosodic_finality: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EndpointingPrediction {
+    pub speech_duration_ms: u32,
+    pub silence_duration_ms: u32,
+    pub semantic_completeness: f32,
+    pub prosodic_finality: f32,
+    pub should_respond: bool,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
