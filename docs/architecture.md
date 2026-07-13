@@ -27,6 +27,15 @@ captured turn
 
 Continuity does not wait for cognition to decide whether output should duck or stop.
 
+## Runtime module boundaries
+
+- `openlive-audio` owns PCM validation, adaptive acoustics, echo probability, target-speech confidence, and endpointing.
+- Gateway `session` owns one connection's lifecycle and is independent of CLI/provider construction.
+- Gateway `session_state` owns latency, playout, and interruption-repair state.
+- Provider streaming helpers own SSE parsing, phrase segmentation, and PCM framing.
+- Native realtime wire helpers own request construction and provider event payloads.
+- `AnswerLeaseManager` is isolated from the Chronos interaction controller.
+
 ## Local-first interruption
 
 While output is active, the browser estimates speech confidence in the audio callback. A likely overlap ramps gain to 18% locally before a WebSocket round trip. This is reversible:
@@ -44,7 +53,7 @@ The local detector is intentionally advisory. Chronos remains authoritative for 
 
 ## Adaptive acoustic observations
 
-Protocol 0.2 carries optional client speech confidence. The gateway independently computes PCM RMS, maintains an adaptive noise floor, fuses client/server confidence, and uses actual playout acknowledgments as an echo prior.
+Protocol 0.3 carries optional client speech confidence and output-reference level. The audio crate independently computes PCM RMS, maintains an adaptive noise floor, fuses client/server confidence, and uses actual playout acknowledgments as an echo prior.
 
 This is an improvement over a fixed RMS threshold, but it is not full acoustic echo cancellation. Production requires aligned rendered-audio reference, cross-correlation or a learned echo detector, and target-speaker embeddings.
 
@@ -98,7 +107,7 @@ The gateway emits `endpointing_prediction` events from a lightweight sidecar bef
 - adaptive speech probability;
 - falling RMS energy over recent frames.
 
-It derives separate semantic-completeness and prosodic-finality scores. Chronos then consumes these scores instead of a single silence-only completion number. This reduces premature responses on short hesitations and keeps turn completion explainable in traces. It is still a heuristic; learned endpointing with transcript revisions is a later stage.
+It derives separate acoustic turn-completion confidence and prosodic-finality scores. Chronos consumes these scores instead of a single silence-only completion number. This reduces premature responses on short hesitations and keeps turn completion explainable in traces. It does not claim semantic understanding; learned endpointing with transcript revisions is a later stage.
 
 ## Determinism
 
@@ -137,6 +146,8 @@ On `hard_yield`:
 5. `output_audio_cancel` records the requested cutoff.
 
 The worklet reports complete rendered frames; exact partial-frame cutoff telemetry remains future work.
+
+The playback worklet also reports rendered-output RMS. The browser attaches this output-reference level to subsequent microphone frames, allowing the gateway to raise echo probability and suppress interruption confidence when input resembles assistant leakage. Full aligned echo cancellation still requires sample-synchronous reference audio and correlation.
 
 ## Barge-in repair
 

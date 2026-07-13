@@ -38,7 +38,7 @@ Outputs are typed `RealtimeEvent` values with a generation ID and media offset. 
 ### Audio
 
 - Declare exact sample rates, channels, and frame duration.
-- Use mono PCM for protocol 0.2.
+- Use mono PCM for protocol 0.3.
 - Preserve monotonically increasing media offsets per generation.
 - Bound captured input and provider queues.
 - Do not emit empty frames to improve a latency score.

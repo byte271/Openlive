@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "apps/openlive-gateway",
+  "crates/openlive-audio",
   "crates/openlive-protocol",
   "crates/openlive-provider",
   "crates/openlive-runtime",
@@ -8,7 +9,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.7.0"
+version = "0.9.0"
 edition = "2021"
 license = "Apache-2.0"
 rust-version = "1.83"
@@ -21,6 +22,7 @@ clap = { version = "=4.5.23", features = ["derive"] }
 futures-util = "=0.3.31"
 reqwest = { version = "=0.11.27", default-features = false, features = ["json", "multipart", "rustls-tls", "stream"] }
 openlive-protocol = { path = "crates/openlive-protocol" }
+openlive-audio = { path = "crates/openlive-audio" }
 openlive-provider = { path = "crates/openlive-provider" }
 openlive-runtime = { path = "crates/openlive-runtime" }
 serde = { version = "=1.0.216", features = ["derive"] }

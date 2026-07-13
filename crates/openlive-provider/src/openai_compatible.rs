@@ -6,23 +6,27 @@ use futures_util::StreamExt;
 use openlive_protocol::{
     AudioCapabilities, ControlCapabilities, DuplexCapabilities, ErrorEvent, LicenseClass, Modality,
     ModalityCapabilities, OutputAudioFrame, OutputTextDelta, OutputTextFinal, ProviderClass,
-    ProviderLimits, ProviderManifest, ProviderState, RealtimeEvent, TaskCreated, TaskResult,
+    ProviderLifecycleState, ProviderLimits, ProviderManifest, ProviderState, RealtimeEvent,
+    TaskCreated, TaskResult,
 };
 use reqwest::{multipart, Client, RequestBuilder, Response};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::json;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::{
+    openai_compatible_streaming::{
+        stream_json_completion, stream_sse, CompletionEvent, PcmFramer, SpeechSegmenter,
+    },
     ProviderEmission, ProviderError, ProviderInput, ProviderSession, ProviderSessionRequest,
     RealtimeProvider,
 };
 
 const INPUT_SAMPLE_RATE: u32 = 16_000;
-const OUTPUT_SAMPLE_RATE: u32 = 24_000;
-const FRAME_DURATION_MS: u16 = 20;
+pub(crate) const OUTPUT_SAMPLE_RATE: u32 = 24_000;
+pub(crate) const FRAME_DURATION_MS: u16 = 20;
 const MAX_CAPTURE_SECONDS: usize = 60;
 
 #[derive(Debug, Clone)]
@@ -94,7 +98,7 @@ impl RealtimeProvider for OpenAiCompatibleProvider {
                 continuous_input_while_output: true,
                 native_turn_policy: false,
                 native_barge_in: false,
-                state_tokens: false,
+                state_tokens: true,
             },
             audio: AudioCapabilities {
                 input_sample_rates: vec![INPUT_SAMPLE_RATE],
@@ -133,6 +137,7 @@ impl RealtimeProvider for OpenAiCompatibleProvider {
                     }
                     ProviderInput::CommitResponse {
                         generation_id,
+                        conversation_version,
                         prompt_hint,
                         ..
                     } => {
@@ -143,6 +148,7 @@ impl RealtimeProvider for OpenAiCompatibleProvider {
                         tokio::spawn(provider.clone().run_pipeline(
                             output_sender.clone(),
                             generation_id,
+                            conversation_version,
                             captured_audio,
                             prompt_hint,
                             cancellation,
@@ -169,11 +175,11 @@ impl RealtimeProvider for OpenAiCompatibleProvider {
 }
 
 impl OpenAiCompatibleProvider {
-    #[allow(clippy::too_many_lines)]
     async fn run_pipeline(
         self,
         sender: mpsc::Sender<ProviderEmission>,
         generation_id: Uuid,
+        conversation_version: u64,
         audio: Vec<u8>,
         prompt_hint: String,
         cancellation: CancellationToken,
@@ -181,7 +187,7 @@ impl OpenAiCompatibleProvider {
         let transcript = if audio.is_empty() {
             prompt_hint
         } else {
-            if send_state(&sender, generation_id, "transcribing")
+            if send_state(&sender, generation_id, ProviderLifecycleState::Transcribing)
                 .await
                 .is_err()
             {
@@ -208,24 +214,32 @@ impl OpenAiCompatibleProvider {
             RealtimeEvent::TaskCreated(TaskCreated {
                 task_id,
                 kind: "cognition".to_owned(),
-                conversation_version: 0,
+                conversation_version,
             }),
         )
         .await;
-        if send_state(&sender, generation_id, "reasoning")
+        if send_state(&sender, generation_id, ProviderLifecycleState::Reasoning)
             .await
             .is_err()
         {
             return;
         }
-        self.stream_answer(&sender, generation_id, task_id, transcript, &cancellation)
-            .await;
+        self.stream_answer(
+            &sender,
+            generation_id,
+            conversation_version,
+            task_id,
+            transcript,
+            &cancellation,
+        )
+        .await;
     }
 
     async fn stream_answer(
         &self,
         sender: &mpsc::Sender<ProviderEmission>,
         generation_id: Uuid,
+        conversation_version: u64,
         task_id: Uuid,
         transcript: String,
         cancellation: &CancellationToken,
@@ -291,7 +305,15 @@ impl OpenAiCompatibleProvider {
             }
         }
         drop(speech_sender);
-        finish_streamed_answer(sender, generation_id, task_id, answer, speech_worker).await;
+        finish_streamed_answer(
+            sender,
+            generation_id,
+            conversation_version,
+            task_id,
+            answer,
+            speech_worker,
+        )
+        .await;
     }
 
     async fn stream_completion(
@@ -360,7 +382,7 @@ impl OpenAiCompatibleProvider {
                 return Ok(());
             }
             if !announced {
-                send_state(&sender, generation_id, "synthesizing")
+                send_state(&sender, generation_id, ProviderLifecycleState::Synthesizing)
                     .await
                     .map_err(|error| error.to_string())?;
                 announced = true;
@@ -466,16 +488,10 @@ impl OpenAiCompatibleProvider {
     }
 }
 
-#[derive(Debug)]
-enum CompletionEvent {
-    Delta(String),
-    Complete,
-    Error(String),
-}
-
 async fn finish_streamed_answer(
     sender: &mpsc::Sender<ProviderEmission>,
     generation_id: Uuid,
+    conversation_version: u64,
     task_id: Uuid,
     answer: String,
     speech_worker: tokio::task::JoinHandle<Result<(), String>>,
@@ -496,7 +512,7 @@ async fn finish_streamed_answer(
         0,
         RealtimeEvent::TaskResult(TaskResult {
             task_id,
-            conversation_version: 0,
+            conversation_version,
             content: json!({ "text": answer.clone() }),
             confidence: 1.0,
         }),
@@ -512,7 +528,7 @@ async fn finish_streamed_answer(
 
     match speech_worker.await {
         Ok(Ok(())) => {
-            let _ = send_state(sender, generation_id, "complete").await;
+            let _ = send_state(sender, generation_id, ProviderLifecycleState::Complete).await;
         }
         Ok(Err(error)) => {
             send_pipeline_error(sender, generation_id, "synthesis_failed", error).await;
@@ -521,183 +537,6 @@ async fn finish_streamed_answer(
             send_pipeline_error(sender, generation_id, "synthesis_failed", error.to_string()).await;
         }
     }
-}
-
-async fn stream_sse(
-    response: Response,
-    sender: &mpsc::Sender<CompletionEvent>,
-    cancellation: &CancellationToken,
-) {
-    let mut stream = response.bytes_stream();
-    let mut pending = Vec::new();
-    loop {
-        let item = tokio::select! {
-            () = cancellation.cancelled() => return,
-            item = stream.next() => item,
-        };
-        let Some(item) = item else {
-            let _ = sender.send(CompletionEvent::Complete).await;
-            return;
-        };
-        let chunk = match item {
-            Ok(chunk) => chunk,
-            Err(error) => {
-                let _ = sender.send(CompletionEvent::Error(error.to_string())).await;
-                return;
-            }
-        };
-        pending.extend_from_slice(&chunk);
-        while let Some(newline) = pending.iter().position(|byte| *byte == b'\n') {
-            let line: Vec<u8> = pending.drain(..=newline).collect();
-            match parse_sse_line(&line) {
-                Ok(Some(CompletionEvent::Complete)) => {
-                    let _ = sender.send(CompletionEvent::Complete).await;
-                    return;
-                }
-                Ok(Some(event)) => {
-                    if sender.send(event).await.is_err() {
-                        return;
-                    }
-                }
-                Ok(None) => {}
-                Err(error) => {
-                    let _ = sender.send(CompletionEvent::Error(error)).await;
-                    return;
-                }
-            }
-        }
-    }
-}
-
-async fn stream_json_completion(response: Response, sender: &mpsc::Sender<CompletionEvent>) {
-    let payload = match checked_response(response).await {
-        Ok(payload) => payload,
-        Err(error) => {
-            let _ = sender.send(CompletionEvent::Error(error)).await;
-            return;
-        }
-    };
-    let completion: ChatResponse = match serde_json::from_slice(&payload) {
-        Ok(completion) => completion,
-        Err(error) => {
-            let _ = sender.send(CompletionEvent::Error(error.to_string())).await;
-            return;
-        }
-    };
-    let Some(content) = completion
-        .choices
-        .into_iter()
-        .next()
-        .map(|choice| choice.message.content)
-    else {
-        let _ = sender
-            .send(CompletionEvent::Error(
-                "completion returned no choices".to_owned(),
-            ))
-            .await;
-        return;
-    };
-    let _ = sender.send(CompletionEvent::Delta(content)).await;
-    let _ = sender.send(CompletionEvent::Complete).await;
-}
-
-fn parse_sse_line(line: &[u8]) -> Result<Option<CompletionEvent>, String> {
-    let line = String::from_utf8_lossy(line);
-    let trimmed = line.trim();
-    let Some(data) = trimmed.strip_prefix("data:") else {
-        return Ok(None);
-    };
-    let data = data.trim();
-    if data == "[DONE]" {
-        return Ok(Some(CompletionEvent::Complete));
-    }
-    let value: Value = serde_json::from_str(data).map_err(|error| error.to_string())?;
-    let delta = value
-        .pointer("/choices/0/delta/content")
-        .or_else(|| value.pointer("/choices/0/text"))
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    if delta.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(CompletionEvent::Delta(delta.to_owned())))
-    }
-}
-
-#[derive(Default)]
-struct SpeechSegmenter {
-    buffer: String,
-}
-
-impl SpeechSegmenter {
-    fn push(&mut self, delta: &str) -> Vec<String> {
-        self.buffer.push_str(delta);
-        let mut segments = Vec::new();
-        while let Some(end) = self.next_boundary() {
-            let segment: String = self.buffer.drain(..end).collect();
-            let segment = segment.trim().to_owned();
-            if !segment.is_empty() {
-                segments.push(segment);
-            }
-        }
-        segments
-    }
-
-    fn finish(&mut self) -> Option<String> {
-        let remaining = std::mem::take(&mut self.buffer);
-        let remaining = remaining.trim();
-        (!remaining.is_empty()).then(|| remaining.to_owned())
-    }
-
-    fn next_boundary(&self) -> Option<usize> {
-        let mut character_count = 0_usize;
-        let mut fallback = None;
-        for (index, character) in self.buffer.char_indices() {
-            character_count = character_count.saturating_add(1);
-            let end = index + character.len_utf8();
-            if character_count >= 18 && matches!(character, '.' | '!' | '?' | ';' | ':' | '\n') {
-                return Some(end);
-            }
-            if character_count >= 40 && character.is_whitespace() {
-                fallback = Some(end);
-            }
-            if character_count >= 72 {
-                return fallback.or(Some(end));
-            }
-        }
-        None
-    }
-}
-
-#[derive(Default)]
-struct PcmFramer {
-    buffer: Vec<u8>,
-}
-
-impl PcmFramer {
-    fn push(&mut self, chunk: &[u8]) -> Vec<Vec<u8>> {
-        self.buffer.extend_from_slice(chunk);
-        let frame_size = pcm_frame_size();
-        let mut frames = Vec::new();
-        while self.buffer.len() >= frame_size {
-            let remainder = self.buffer.split_off(frame_size);
-            frames.push(std::mem::replace(&mut self.buffer, remainder));
-        }
-        frames
-    }
-
-    fn finish(mut self) -> Option<Vec<u8>> {
-        if self.buffer.is_empty() {
-            return None;
-        }
-        self.buffer.resize(pcm_frame_size(), 0);
-        Some(self.buffer)
-    }
-}
-
-fn pcm_frame_size() -> usize {
-    usize::try_from(OUTPUT_SAMPLE_RATE).unwrap_or_default() * 2 * usize::from(FRAME_DURATION_MS)
-        / 1_000
 }
 
 async fn emit_pcm_frame(
@@ -764,7 +603,7 @@ async fn send_cancelable(
     }
 }
 
-async fn checked_response(response: Response) -> Result<Vec<u8>, String> {
+pub(crate) async fn checked_response(response: Response) -> Result<Vec<u8>, String> {
     let status = response.status();
     let bytes = response.bytes().await.map_err(|error| error.to_string())?;
     if status.is_success() {
@@ -780,15 +619,13 @@ async fn checked_response(response: Response) -> Result<Vec<u8>, String> {
 async fn send_state(
     sender: &mpsc::Sender<ProviderEmission>,
     generation_id: Uuid,
-    state: &str,
+    state: ProviderLifecycleState,
 ) -> Result<(), mpsc::error::SendError<ProviderEmission>> {
     send(
         sender,
         Some(generation_id),
         0,
-        RealtimeEvent::ProviderState(ProviderState {
-            state: state.to_owned(),
-        }),
+        RealtimeEvent::ProviderState(ProviderState { state }),
     )
     .await
 }
@@ -874,21 +711,6 @@ struct ChatMessage<'a> {
     content: &'a str,
 }
 
-#[derive(Debug, Deserialize)]
-struct ChatResponse {
-    choices: Vec<ChatChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatChoice {
-    message: ChatResponseMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatResponseMessage {
-    content: String,
-}
-
 #[derive(Debug, Serialize)]
 struct SpeechRequest<'a> {
     model: &'a str,
@@ -921,30 +743,10 @@ mod tests {
             channels: 1,
             frame_duration_ms: FRAME_DURATION_MS,
             client_speech_probability: None,
+            client_output_level: None,
         };
         append_audio(&mut audio, &frame);
         assert_eq!(audio.len(), maximum);
-    }
-
-    #[test]
-    fn speech_segmenter_emits_early_complete_clause() {
-        let mut segmenter = SpeechSegmenter::default();
-        assert!(segmenter.push("This is a natural opening").is_empty());
-        let segments = segmenter.push(" sentence. The next thought");
-        assert_eq!(segments, vec!["This is a natural opening sentence."]);
-        assert_eq!(segmenter.finish().as_deref(), Some("The next thought"));
-    }
-
-    #[test]
-    fn pcm_framer_preserves_and_pads_stream_bytes() {
-        let mut packetizer = PcmFramer::default();
-        let output_frames = packetizer.push(&vec![1_u8; pcm_frame_size() + 100]);
-        assert_eq!(output_frames.len(), 1);
-        assert_eq!(output_frames[0].len(), pcm_frame_size());
-        let final_frame = packetizer.finish().expect("final frame");
-        assert_eq!(final_frame.len(), pcm_frame_size());
-        assert!(final_frame[..100].iter().all(|byte| *byte == 1));
-        assert!(final_frame[100..].iter().all(|byte| *byte == 0));
     }
 
     #[test]

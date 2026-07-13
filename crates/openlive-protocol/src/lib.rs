@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: &str = "0.2";
+pub const PROTOCOL_VERSION: &str = "0.3";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EventEnvelope {
@@ -79,11 +79,9 @@ pub enum RealtimeEvent {
     SessionCreated(SessionCreated),
     SessionConfigured(SessionConfigured),
     InputAudioFrame(InputAudioFrame),
-    InputAudioGap(InputAudioGap),
     Observation(Observation),
     EndpointingPrediction(EndpointingPrediction),
     InteractionDecision(InteractionDecision),
-    ResponseRequested(ResponseRequested),
     OutputTextDelta(OutputTextDelta),
     OutputTextFinal(OutputTextFinal),
     OutputAudioFrame(OutputAudioFrame),
@@ -119,11 +117,8 @@ pub struct InputAudioFrame {
     pub frame_duration_ms: u16,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_speech_probability: Option<f32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct InputAudioGap {
-    pub missing_duration_ms: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_output_level: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -131,7 +126,7 @@ pub struct Observation {
     pub speech_probability: f32,
     pub echo_probability: f32,
     pub target_speaker_probability: f32,
-    pub semantic_completeness: f32,
+    pub turn_completion_confidence: f32,
     pub prosodic_finality: f32,
 }
 
@@ -139,7 +134,7 @@ pub struct Observation {
 pub struct EndpointingPrediction {
     pub speech_duration_ms: u32,
     pub silence_duration_ms: u32,
-    pub semantic_completeness: f32,
+    pub turn_completion_confidence: f32,
     pub prosodic_finality: f32,
     pub should_respond: bool,
     pub reason: String,
@@ -152,11 +147,6 @@ pub struct InteractionDecision {
     pub reversible: bool,
     pub reason: String,
     pub evidence_event_ids: Vec<Uuid>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ResponseRequested {
-    pub prompt: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -191,7 +181,18 @@ pub struct OutputAudioPlayed {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProviderState {
-    pub state: String,
+    pub state: ProviderLifecycleState,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderLifecycleState {
+    Transcribing,
+    Reasoning,
+    Synthesizing,
+    Generating,
+    NativeSpeechStarted,
+    Complete,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

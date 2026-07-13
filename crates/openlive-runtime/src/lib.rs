@@ -1,3 +1,5 @@
+mod lease;
+
 use openlive_protocol::{
     BackchannelLevel, EventEnvelope, InteractionAction, InteractionDecision, InteractionProfile,
     InterruptionSensitivity, Observation, RealtimeEvent,
@@ -6,13 +8,15 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+pub use lease::{AnswerLease, AnswerLeaseManager};
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChronosConfig {
     pub speech_on_threshold: f32,
     pub speech_off_threshold: f32,
     pub barge_in_commit_ms: u32,
     pub minimum_user_turn_ms: u32,
-    pub semantic_commit_threshold: f32,
+    pub turn_commit_threshold: f32,
     pub backchannel_after_ms: u32,
     pub backchannel_spacing_ms: u32,
 }
@@ -24,7 +28,7 @@ impl Default for ChronosConfig {
             speech_off_threshold: 0.34,
             barge_in_commit_ms: 180,
             minimum_user_turn_ms: 280,
-            semantic_commit_threshold: 0.55,
+            turn_commit_threshold: 0.55,
             backchannel_after_ms: 1_800,
             backchannel_spacing_ms: 3_500,
         }
@@ -223,15 +227,15 @@ impl Chronos {
                 event_id,
             ));
         }
-        if observation.semantic_completeness < self.config.semantic_commit_threshold
+        if observation.turn_completion_confidence < self.config.turn_commit_threshold
             && self.should_backchannel(media_time_us, since_us)
         {
             self.last_backchannel_us = Some(media_time_us);
             return Some(ChronosDecision::new(
                 InteractionAction::Backchannel,
-                observation.semantic_completeness.mul_add(-0.4, 0.9),
+                observation.turn_completion_confidence.mul_add(-0.4, 0.9),
                 true,
-                "long user turn with low semantic completeness",
+                "long user turn with low completion confidence",
                 event_id,
             ));
         }
@@ -418,8 +422,8 @@ impl Chronos {
     ) -> bool {
         let speech_ms = elapsed_ms(silence_since_us, speech_since_us);
         let silence_ms = elapsed_ms(media_time_us, silence_since_us);
-        let complete = observation.semantic_completeness >= self.config.semantic_commit_threshold
-            || observation.prosodic_finality >= self.config.semantic_commit_threshold;
+        let complete = observation.turn_completion_confidence >= self.config.turn_commit_threshold
+            || observation.prosodic_finality >= self.config.turn_commit_threshold;
 
         speech_ms >= u64::from(self.config.minimum_user_turn_ms)
             && silence_ms >= u64::from(self.profile.pause_tolerance_ms)
@@ -441,80 +445,6 @@ pub struct SessionEngine {
     sequence: u64,
     last_media_time_us: u64,
     chronos: Chronos,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-pub struct AnswerLease {
-    pub lease_id: Uuid,
-    pub conversation_version: u64,
-    pub generation_id: Uuid,
-}
-
-#[derive(Debug)]
-pub struct AnswerLeaseManager {
-    session_id: Uuid,
-    conversation_version: u64,
-    lease_sequence: u64,
-    user_turn_open: bool,
-    active: Option<AnswerLease>,
-}
-
-impl AnswerLeaseManager {
-    #[must_use]
-    pub const fn new(session_id: Uuid) -> Self {
-        Self {
-            session_id,
-            conversation_version: 0,
-            lease_sequence: 0,
-            user_turn_open: false,
-            active: None,
-        }
-    }
-
-    pub fn begin_user_turn(&mut self) {
-        if self.user_turn_open {
-            return;
-        }
-        self.conversation_version = self.conversation_version.saturating_add(1);
-        self.user_turn_open = true;
-        self.active = None;
-    }
-
-    pub fn issue(&mut self, generation_id: Uuid) -> AnswerLease {
-        self.lease_sequence = self.lease_sequence.saturating_add(1);
-        self.user_turn_open = false;
-        let name = format!(
-            "answer:{}:{}",
-            self.conversation_version, self.lease_sequence
-        );
-        let lease = AnswerLease {
-            lease_id: Uuid::new_v5(&self.session_id, name.as_bytes()),
-            conversation_version: self.conversation_version,
-            generation_id,
-        };
-        self.active = Some(lease);
-        lease
-    }
-
-    pub fn revoke(&mut self, generation_id: Uuid) {
-        if self
-            .active
-            .is_some_and(|lease| lease.generation_id == generation_id)
-        {
-            self.active = None;
-        }
-    }
-
-    #[must_use]
-    pub fn accepts(&self, generation_id: Uuid) -> bool {
-        self.active
-            .is_some_and(|lease| lease.generation_id == generation_id)
-    }
-
-    #[must_use]
-    pub const fn active(&self) -> Option<AnswerLease> {
-        self.active
-    }
 }
 
 impl SessionEngine {
@@ -629,7 +559,7 @@ fn effective_speech_probability(observation: &Observation) -> f32 {
 }
 
 fn response_commit_confidence(observation: &Observation) -> f32 {
-    (observation.semantic_completeness * 0.55 + observation.prosodic_finality * 0.45)
+    (observation.turn_completion_confidence * 0.55 + observation.prosodic_finality * 0.45)
         .clamp(0.0, 1.0)
 }
 
@@ -664,7 +594,7 @@ mod tests {
                 speech_probability,
                 echo_probability: 0.0,
                 target_speaker_probability: 1.0,
-                semantic_completeness: completeness,
+                turn_completion_confidence: completeness,
                 prosodic_finality: completeness,
             }),
         )

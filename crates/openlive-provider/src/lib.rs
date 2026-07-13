@@ -1,6 +1,8 @@
 mod mock;
 mod openai_compatible;
+mod openai_compatible_streaming;
 mod openai_realtime;
+mod openai_realtime_wire;
 
 use async_trait::async_trait;
 use openlive_protocol::{InputAudioFrame, ProviderManifest, RealtimeEvent};
@@ -25,6 +27,7 @@ pub enum ProviderInput {
     },
     CommitResponse {
         generation_id: Uuid,
+        conversation_version: u64,
         media_time_us: u64,
         prompt_hint: String,
     },

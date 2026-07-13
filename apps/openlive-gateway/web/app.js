@@ -32,6 +32,7 @@ let locallyDucked = false;
 let localResumeTimer;
 let hardYielded = false;
 let inputSampleRate = 16000;
+let playbackOutputLevel = 0;
 
 elements.connect.addEventListener("click", connect);
 elements.disconnect.addEventListener("click", disconnect);
@@ -126,6 +127,7 @@ function sendAudioFrame(floatSamples) {
     channels: 1,
     frame_duration_ms: 20,
     client_speech_probability: localSpeechProbability,
+    client_output_level: playbackOutputLevel,
   });
   mediaTimeUs += 20000;
 }
@@ -150,7 +152,7 @@ function sendEvent(
 ) {
   socket.send(
     JSON.stringify({
-      protocol_version: "0.2",
+      protocol_version: "0.3",
       event_id: crypto.randomUUID(),
       session_id: sessionId,
       stream_id: streamId,
@@ -378,6 +380,10 @@ function handlePlaybackMessage(message) {
   if (message.type === "buffer") {
     elements.playbackBuffer.textContent =
       `${message.queuedMs.toFixed(0)} / ${message.targetMs.toFixed(0)} ms`;
+    return;
+  }
+  if (message.type === "output_level") {
+    playbackOutputLevel = message.rms;
   }
 }
 

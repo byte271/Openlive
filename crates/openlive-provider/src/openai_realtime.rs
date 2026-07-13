@@ -1,25 +1,23 @@
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use futures_util::{Sink, SinkExt, StreamExt};
 use openlive_protocol::{
     AudioCapabilities, ControlCapabilities, DuplexCapabilities, ErrorEvent, LicenseClass, Modality,
     ModalityCapabilities, OutputAudioFrame, OutputTextDelta, OutputTextFinal, ProviderClass,
-    ProviderLimits, ProviderManifest, ProviderState, RealtimeEvent,
+    ProviderLifecycleState, ProviderLimits, ProviderManifest, ProviderState, RealtimeEvent,
 };
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
 use tokio_tungstenite::{
     connect_async,
-    tungstenite::{
-        client::IntoClientRequest,
-        http::{header::AUTHORIZATION, HeaderValue},
-        Error as WebSocketError, Message,
-    },
+    tungstenite::{Error as WebSocketError, Message},
 };
-use url::Url;
 use uuid::Uuid;
 
 use crate::{
+    openai_realtime_wire::{
+        connection_request, duration_ms, pcm_duration_us, response_create_event,
+        session_update_event,
+    },
     ProviderEmission, ProviderError, ProviderInput, ProviderSession, ProviderSessionRequest,
     RealtimeProvider,
 };
@@ -115,7 +113,11 @@ impl RealtimeProvider for OpenAiRealtimeProvider {
         &self,
         _request: ProviderSessionRequest,
     ) -> Result<ProviderSession, ProviderError> {
-        let request = connection_request(&self.config)?;
+        let request = connection_request(
+            &self.config.url,
+            &self.config.model,
+            self.config.api_key.as_deref(),
+        )?;
         let (websocket, _) = connect_async(request)
             .await
             .map_err(|error| ProviderError::Unavailable(error.to_string()))?;
@@ -150,17 +152,7 @@ async fn run_realtime_session<S>(
     let (mut websocket_sender, mut websocket_receiver) = websocket.split();
     if send_json(
         &mut websocket_sender,
-        &json!({
-            "type": "session.update",
-            "session": {
-                "modalities": ["text", "audio"],
-                "instructions": config.instructions,
-                "voice": config.voice,
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                "turn_detection": null
-            }
-        }),
+        &session_update_event(&config.instructions, &config.voice),
     )
     .await
     .is_err()
@@ -242,6 +234,7 @@ where
         }
         ProviderInput::CommitResponse {
             generation_id,
+            conversation_version: _,
             media_time_us: _,
             prompt_hint,
         } => {
@@ -273,17 +266,6 @@ where
     Ok(())
 }
 
-fn response_create_event(prompt_hint: &str) -> Value {
-    let mut response = json!({"modalities": ["text", "audio"]});
-    if !prompt_hint.trim().is_empty() {
-        response["instructions"] = json!(prompt_hint);
-    }
-    json!({
-        "type": "response.create",
-        "response": response
-    })
-}
-
 async fn handle_server_event(
     event: Value,
     active: &mut Option<ActiveResponse>,
@@ -300,7 +282,7 @@ async fn handle_server_event(
                     output_sender,
                     response,
                     RealtimeEvent::ProviderState(ProviderState {
-                        state: "generating".to_owned(),
+                        state: ProviderLifecycleState::Generating,
                     }),
                 )
                 .await;
@@ -324,7 +306,7 @@ async fn handle_server_event(
                     output_sender,
                     response,
                     RealtimeEvent::ProviderState(ProviderState {
-                        state: "native_speech_started".to_owned(),
+                        state: ProviderLifecycleState::NativeSpeechStarted,
                     }),
                 )
                 .await;
@@ -407,7 +389,7 @@ async fn finish_response(
             generation_id: Some(response.generation_id),
             media_offset_us: response.output_offset_us,
             event: RealtimeEvent::ProviderState(ProviderState {
-                state: "complete".to_owned(),
+                state: ProviderLifecycleState::Complete,
             }),
         })
         .await;
@@ -473,79 +455,4 @@ where
     S: Sink<Message, Error = WebSocketError> + Unpin,
 {
     sender.send(Message::Text(value.to_string())).await
-}
-
-fn connection_request(
-    config: &OpenAiRealtimeConfig,
-) -> Result<tokio_tungstenite::tungstenite::http::Request<()>, ProviderError> {
-    let mut url = Url::parse(&config.url)
-        .map_err(|error| ProviderError::InvalidConfiguration(error.to_string()))?;
-    if !url.query_pairs().any(|(key, _)| key == "model") {
-        url.query_pairs_mut().append_pair("model", &config.model);
-    }
-    let mut request = url
-        .as_str()
-        .into_client_request()
-        .map_err(|error| ProviderError::InvalidConfiguration(error.to_string()))?;
-    request
-        .headers_mut()
-        .insert("OpenAI-Beta", HeaderValue::from_static("realtime=v1"));
-    if let Some(api_key) = &config.api_key {
-        let authorization = HeaderValue::from_str(&format!("Bearer {api_key}"))
-            .map_err(|error| ProviderError::InvalidConfiguration(error.to_string()))?;
-        request.headers_mut().insert(AUTHORIZATION, authorization);
-    }
-    Ok(request)
-}
-
-#[allow(clippy::cast_possible_truncation)]
-fn duration_ms(duration_us: u64) -> u16 {
-    u16::try_from((duration_us / 1_000).max(1))
-        .unwrap_or(u16::MAX)
-        .max(1)
-}
-
-fn pcm_duration_us(audio_b64: &str) -> u64 {
-    let Ok(bytes) = BASE64.decode(audio_b64) else {
-        return u64::from(DEFAULT_FRAME_DURATION_MS) * 1_000;
-    };
-    u64::try_from(bytes.len()).unwrap_or_default() * 1_000_000 / (u64::from(SAMPLE_RATE) * 2)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn request_adds_model_and_realtime_header() {
-        let request = connection_request(&OpenAiRealtimeConfig {
-            url: "ws://127.0.0.1:9000/realtime".to_owned(),
-            api_key: None,
-            model: "local-speech".to_owned(),
-            voice: "default".to_owned(),
-            instructions: String::new(),
-        })
-        .expect("request");
-        assert!(request.uri().to_string().contains("model=local-speech"));
-        assert_eq!(request.headers()["OpenAI-Beta"], "realtime=v1");
-    }
-
-    #[test]
-    fn pcm_duration_uses_24khz_mono_s16() {
-        let audio = BASE64.encode(vec![0_u8; 960]);
-        assert_eq!(pcm_duration_us(&audio), 20_000);
-    }
-
-    #[test]
-    fn empty_repair_instruction_is_omitted() {
-        let event = response_create_event("");
-        assert!(event.pointer("/response/instructions").is_none());
-        let event = response_create_event("repair");
-        assert_eq!(
-            event
-                .pointer("/response/instructions")
-                .and_then(Value::as_str),
-            Some("repair")
-        );
-    }
 }

@@ -79,6 +79,7 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
     }
 
     let wroteSamples = false;
+    let sumSquares = 0;
     for (let index = 0; index < output.length; index += 1) {
       if (!this.current) {
         this.current = this.queue.shift() ?? null;
@@ -99,6 +100,7 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
         }
       }
       output[index] = value;
+      sumSquares += value * value;
       this.current.offset += 1;
       this.queuedSamples = Math.max(0, this.queuedSamples - 1);
       this.stableSamples += 1;
@@ -121,6 +123,12 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
       );
       this.stableSamples = 0;
       this.postBufferState();
+    }
+    if (wroteSamples) {
+      this.port.postMessage({
+        type: "output_level",
+        rms: Math.sqrt(sumSquares / output.length),
+      });
     }
     return true;
   }

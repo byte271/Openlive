@@ -5,7 +5,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use openlive_protocol::{
     AudioCapabilities, ControlCapabilities, DuplexCapabilities, LicenseClass, Modality,
     ModalityCapabilities, OutputAudioFrame, OutputTextDelta, OutputTextFinal, ProviderClass,
-    ProviderLimits, ProviderManifest, ProviderState, RealtimeEvent,
+    ProviderLifecycleState, ProviderLimits, ProviderManifest, ProviderState, RealtimeEvent,
 };
 use tokio::{sync::mpsc, time::sleep};
 use tokio_util::sync::CancellationToken;
@@ -142,7 +142,7 @@ async fn generate_mock_response(
         generation_id,
         0,
         RealtimeEvent::ProviderState(ProviderState {
-            state: "generating".to_owned(),
+            state: ProviderLifecycleState::Generating,
         }),
     )
     .await
@@ -223,7 +223,7 @@ async fn generate_mock_response(
         generation_id,
         final_offset,
         RealtimeEvent::ProviderState(ProviderState {
-            state: "complete".to_owned(),
+            state: ProviderLifecycleState::Complete,
         }),
     )
     .await;
@@ -305,6 +305,7 @@ mod tests {
         input
             .send(ProviderInput::CommitResponse {
                 generation_id,
+                conversation_version: 1,
                 media_time_us: 0,
                 prompt_hint: "test".to_owned(),
             })

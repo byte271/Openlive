@@ -4,11 +4,13 @@ Openlive is an open, model-neutral runtime for continuous voice agents. It separ
 
 ## Current status
 
-**Version 0.7 is an experimental runtime—not a GPT-Live equivalent.**
+**Version 0.9 is an experimental runtime—not a GPT-Live equivalent.**
 
 Implemented:
 
 - Rust workspace with unsafe code forbidden and strict Clippy.
+- Dedicated audio/DSP crate and separated gateway configuration, session, and state modules.
+- Separated cascade streaming primitives and native realtime wire protocol mapping.
 - Versioned, timestamped JSON realtime protocol and deterministic replay.
 - Chronos pause, overlap, reversible duck, hard-yield, and cancellation policy.
 - Browser-local speech confidence and gain ducking before a network round trip.
@@ -16,6 +18,8 @@ Implemented:
 - Adaptive server noise floor and playout-aware echo probability.
 - Long-lived bidirectional provider sessions that accept audio during output.
 - Deterministic answer leases, conversation versions, and stale-event suppression.
+- Provider commits carry conversation versions instead of relying on gateway patch-up.
+- Provider lifecycle conformance tests cover cancellation, monotonic offsets, and close.
 - Asynchronous cognition task and result events.
 - Mock duplex provider for offline runtime development.
 - Configurable OpenAI-compatible ASR → LLM → PCM TTS provider.
@@ -27,6 +31,7 @@ Implemented:
 - Worklet-side generation cancellation with a short audible fade.
 - Endpointing prediction events that fuse speech duration, silence, and energy fall.
 - Barge-in repair context so the next answer knows it follows an interruption.
+- Browser output-reference level attached to microphone frames for echo-aware filtering.
 - Bounded WebSocket messages, provider queues, and captured audio.
 
 Still missing:
@@ -46,9 +51,11 @@ The cascade adapter now consumes chat SSE incrementally, sends completed clauses
 
 Browser playback now runs through a persistent AudioWorklet queue. It starts with a 40 ms target, raises the target after underflow, slowly reduces it during stable playback, reports frame completion from the render thread, and fades an exact generation during cancellation.
 
-Endpointing now emits `endpointing_prediction` events before Chronos decisions. The local sidecar estimates semantic completeness and prosodic finality from duration, silence, and energy shape instead of using silence alone. It remains heuristic until a learned semantic endpointing model or streaming ASR revisions are integrated.
+Endpointing emits `endpointing_prediction` events before Chronos decisions. The `openlive-audio` crate estimates acoustic turn-completion confidence and prosodic finality from duration, silence, and energy shape instead of using silence alone. It does not claim semantic understanding; learned semantic endpointing requires transcript revisions or a dedicated model.
 
 When a user hard-yields an assistant response, the gateway records a one-shot repair context. The next committed response receives instructions to prioritize the new user turn, avoid repeating the interrupted answer, and acknowledge corrections only when useful. Cascaded and realtime adapters both receive this hint.
+
+The playback worklet reports current output RMS to the capture path. The browser includes this reference level with each microphone frame, and the gateway suppresses echo-like input while preserving high-confidence target speech. This is not full acoustic echo cancellation, but it reduces false barge-in from speaker leakage.
 
 ## Requirements
 

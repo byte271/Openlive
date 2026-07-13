@@ -1,0 +1,13 @@
+[package]
+name = "openlive-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+base64.workspace = true
+openlive-protocol.workspace = true
+
+[lints]
+workspace = true
