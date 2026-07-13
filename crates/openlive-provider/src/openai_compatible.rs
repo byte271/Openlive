@@ -188,7 +188,7 @@ impl OpenAiCompatibleProvider {
                 return;
             }
             match self.transcribe(audio, &cancellation).await {
-                Ok(transcript) => transcript,
+                Ok(transcript) => merge_prompt_hint(&prompt_hint, &transcript),
                 Err(error) => {
                     send_pipeline_error(&sender, generation_id, "transcription_failed", error)
                         .await;
@@ -736,6 +736,18 @@ fn append_audio(audio: &mut Vec<u8>, frame: &openlive_protocol::InputAudioFrame)
     }
 }
 
+fn merge_prompt_hint(prompt_hint: &str, transcript: &str) -> String {
+    let transcript = transcript.trim();
+    if prompt_hint.trim().is_empty() {
+        transcript.to_owned()
+    } else {
+        format!(
+            "{}\n\nUser turn transcript: {transcript}",
+            prompt_hint.trim()
+        )
+    }
+}
+
 fn cancel_active(active: &mut Option<(Uuid, CancellationToken)>) {
     if let Some((_, cancellation)) = active.take() {
         cancellation.cancel();
@@ -933,5 +945,12 @@ mod tests {
         assert_eq!(final_frame.len(), pcm_frame_size());
         assert!(final_frame[..100].iter().all(|byte| *byte == 1));
         assert!(final_frame[100..].iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn repair_hint_is_merged_with_transcript() {
+        let merged = merge_prompt_hint("The user interrupted the answer.", "Actually, stop.");
+        assert!(merged.contains("interrupted"));
+        assert!(merged.contains("User turn transcript: Actually, stop."));
     }
 }

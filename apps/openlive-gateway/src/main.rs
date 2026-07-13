@@ -277,6 +277,7 @@ async fn run_session(socket: WebSocket, provider: Arc<dyn RealtimeProvider>) {
     let mut turn_tracker = TurnTracker::default();
     let mut acoustic_frontend = AcousticFrontend::default();
     let mut playout = PlayoutTracker::default();
+    let mut repair_context = RepairContext::default();
 
     let manifest = provider.manifest();
     let input_sample_rate = manifest
@@ -409,6 +410,7 @@ async fn run_session(socket: WebSocket, provider: Arc<dyn RealtimeProvider>) {
                                                     &mut leases,
                                                     &mut active_generation,
                                                     &mut playout,
+                                                    &mut repair_context,
                                                 ).await;
                                             }
                                         }
@@ -542,6 +544,7 @@ async fn handle_action(
     leases: &mut AnswerLeaseManager,
     active_generation: &mut Option<ActiveGeneration>,
     playout: &mut PlayoutTracker,
+    repair_context: &mut RepairContext,
 ) {
     match action {
         InteractionAction::Listen => {
@@ -552,6 +555,7 @@ async fn handle_action(
                 return;
             }
             let generation_id = Uuid::new_v4();
+            let prompt_hint = repair_context.take_prompt();
             leases.issue(generation_id);
             engine.mark_response_started(generation_id);
             *active_generation = Some(ActiveGeneration {
@@ -575,7 +579,7 @@ async fn handle_action(
                 .send(ProviderInput::CommitResponse {
                     generation_id,
                     media_time_us,
-                    prompt_hint: "Openlive received your turn. Configure a real model endpoint for semantic responses.".to_owned(),
+                    prompt_hint,
                 })
                 .await
                 .is_err()
@@ -593,6 +597,9 @@ async fn handle_action(
         }
         InteractionAction::HardYield | InteractionAction::Replan => {
             if let Some(active) = active_generation.take() {
+                if matches!(action, InteractionAction::HardYield) {
+                    repair_context.record_interruption(active.id, media_time_us);
+                }
                 send_latency_mark(
                     outgoing_sender,
                     session_id,
@@ -792,6 +799,29 @@ struct EndpointingSignals {
     prosodic_finality: f32,
     should_respond: bool,
     reason: String,
+}
+
+#[derive(Debug, Default)]
+struct RepairContext {
+    interrupted_generation_id: Option<Uuid>,
+    interrupted_at_us: u64,
+}
+
+impl RepairContext {
+    fn record_interruption(&mut self, generation_id: Uuid, media_time_us: u64) {
+        self.interrupted_generation_id = Some(generation_id);
+        self.interrupted_at_us = media_time_us;
+    }
+
+    fn take_prompt(&mut self) -> String {
+        let Some(generation_id) = self.interrupted_generation_id.take() else {
+            return String::new();
+        };
+        format!(
+            "The user interrupted assistant generation {generation_id} at media time {} us. Treat the new user turn as higher priority, avoid repeating the interrupted answer, briefly acknowledge any correction if useful, and answer the new intent directly.",
+            self.interrupted_at_us
+        )
+    }
 }
 
 #[derive(Debug)]
@@ -1018,5 +1048,16 @@ mod tests {
         let final_prediction = tracker.observe(1_080_000, 20, &silence);
         assert!(final_prediction.should_respond);
         assert!(final_prediction.prosodic_finality > 0.55);
+    }
+
+    #[test]
+    fn repair_context_is_one_shot() {
+        let generation_id = Uuid::new_v4();
+        let mut repair = RepairContext::default();
+        repair.record_interruption(generation_id, 42_000);
+        let prompt = repair.take_prompt();
+        assert!(prompt.contains(&generation_id.to_string()));
+        assert!(prompt.contains("higher priority"));
+        assert!(repair.take_prompt().is_empty());
     }
 }

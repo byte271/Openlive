@@ -138,6 +138,12 @@ On `hard_yield`:
 
 The worklet reports complete rendered frames; exact partial-frame cutoff telemetry remains future work.
 
+## Barge-in repair
+
+Hard-yield no longer only stops audio. The gateway records the interrupted generation and media timestamp as one-shot repair context. The next provider commit includes a prompt hint that the user interrupted the previous answer and that the new turn has priority.
+
+For cascaded providers, the hint is merged with the transcribed user turn. For realtime providers, it is sent as per-response instructions when the endpoint supports that field. This prevents stale answer continuation and reduces repeated pre-interruption content after a user correction.
+
 ## Safety trajectory
 
 Before production:

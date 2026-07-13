@@ -243,7 +243,7 @@ where
         ProviderInput::CommitResponse {
             generation_id,
             media_time_us: _,
-            prompt_hint: _,
+            prompt_hint,
         } => {
             *active = Some(ActiveResponse {
                 generation_id,
@@ -255,16 +255,7 @@ where
                 &json!({"type": "input_audio_buffer.commit"}),
             )
             .await?;
-            send_json(
-                websocket_sender,
-                &json!({
-                    "type": "response.create",
-                    "response": {
-                        "modalities": ["text", "audio"]
-                    }
-                }),
-            )
-            .await?;
+            send_json(websocket_sender, &response_create_event(&prompt_hint)).await?;
         }
         ProviderInput::CancelGeneration { generation_id } => {
             if active
@@ -280,6 +271,17 @@ where
         }
     }
     Ok(())
+}
+
+fn response_create_event(prompt_hint: &str) -> Value {
+    let mut response = json!({"modalities": ["text", "audio"]});
+    if !prompt_hint.trim().is_empty() {
+        response["instructions"] = json!(prompt_hint);
+    }
+    json!({
+        "type": "response.create",
+        "response": response
+    })
 }
 
 async fn handle_server_event(
@@ -532,5 +534,18 @@ mod tests {
     fn pcm_duration_uses_24khz_mono_s16() {
         let audio = BASE64.encode(vec![0_u8; 960]);
         assert_eq!(pcm_duration_us(&audio), 20_000);
+    }
+
+    #[test]
+    fn empty_repair_instruction_is_omitted() {
+        let event = response_create_event("");
+        assert!(event.pointer("/response/instructions").is_none());
+        let event = response_create_event("repair");
+        assert_eq!(
+            event
+                .pointer("/response/instructions")
+                .and_then(Value::as_str),
+            Some("repair")
+        );
     }
 }
