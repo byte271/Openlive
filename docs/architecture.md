@@ -87,6 +87,8 @@ Provider manifests describe:
 
 The included cascade provider demonstrates configurable ASR, cognition, TTS, and answer-lease cancellation. The native realtime provider keeps a persistent speech session and streams PCM/transcript deltas without forcing an ASR → text → TTS boundary inside Openlive.
 
+The cascade cognition path streams chat deltas into an early phrase segmenter. A sequential speech worker begins TTS at the first complete clause while later text is still arriving, then packetizes response-body PCM into 20 ms frames. This improves onset without allowing overlapping phrase audio.
+
 ## Determinism
 
 `SessionEngine`:

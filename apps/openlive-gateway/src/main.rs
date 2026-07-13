@@ -1,4 +1,4 @@
-use std::{env, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{env, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
 
 use axum::{
     extract::{
@@ -14,9 +14,9 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use clap::{Parser, ValueEnum};
 use futures_util::{SinkExt, StreamExt};
 use openlive_protocol::{
-    ErrorEvent, EventEnvelope, InputAudioFrame, InteractionAction, Observation, OutputAudioCancel,
-    OutputAudioPlayed, RealtimeEvent, SessionConfigured, SessionCreated, TaskCreated, TaskResult,
-    PROTOCOL_VERSION,
+    ErrorEvent, EventEnvelope, InputAudioFrame, InteractionAction, LatencyMark, LatencyPhase,
+    Observation, OutputAudioCancel, OutputAudioPlayed, RealtimeEvent, SessionConfigured,
+    SessionCreated, TaskCreated, TaskResult, PROTOCOL_VERSION,
 };
 use openlive_provider::{
     MockDuplexProvider, OpenAiCompatibleConfig, OpenAiCompatibleProvider, OpenAiRealtimeConfig,
@@ -149,10 +149,60 @@ enum SessionCommand {
     ProviderEmission(ProviderEmission),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 struct ActiveGeneration {
     id: Uuid,
     base_media_time_us: u64,
+    latency: LatencyTracker,
+}
+
+#[derive(Debug)]
+struct LatencyTracker {
+    started_at: Instant,
+    first_provider_event: bool,
+    first_text_delta: bool,
+    first_audio_frame: bool,
+}
+
+impl LatencyTracker {
+    fn new() -> Self {
+        Self {
+            started_at: Instant::now(),
+            first_provider_event: false,
+            first_text_delta: false,
+            first_audio_frame: false,
+        }
+    }
+
+    fn observe(&mut self, event: &RealtimeEvent) -> Vec<LatencyMark> {
+        let mut marks = Vec::new();
+        if !self.first_provider_event {
+            self.first_provider_event = true;
+            marks.push(self.mark(LatencyPhase::FirstProviderEvent));
+        }
+        if matches!(event, RealtimeEvent::OutputTextDelta(_)) && !self.first_text_delta {
+            self.first_text_delta = true;
+            marks.push(self.mark(LatencyPhase::FirstTextDelta));
+        }
+        if matches!(event, RealtimeEvent::OutputAudioFrame(_)) && !self.first_audio_frame {
+            self.first_audio_frame = true;
+            marks.push(self.mark(LatencyPhase::FirstAudioFrame));
+        }
+        if matches!(
+            event,
+            RealtimeEvent::ProviderState(state) if state.state == "complete"
+        ) {
+            marks.push(self.mark(LatencyPhase::ProviderComplete));
+        }
+        marks
+    }
+
+    fn mark(&self, phase: LatencyPhase) -> LatencyMark {
+        LatencyMark {
+            phase,
+            elapsed_us: u64::try_from(self.started_at.elapsed().as_micros()).unwrap_or(u64::MAX),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -323,7 +373,7 @@ async fn run_session(socket: WebSocket, provider: Arc<dyn RealtimeProvider>) {
                                         for mut decision_event in decisions {
                                             let action = decision_action(&decision_event);
                                             if matches!(action, Some(InteractionAction::HardYield)) {
-                                                if let Some(active) = active_generation {
+                                                if let Some(active) = active_generation.as_ref() {
                                                     decision_event =
                                                         decision_event.with_generation(active.id);
                                                 }
@@ -404,13 +454,27 @@ async fn run_session(socket: WebSocket, provider: Arc<dyn RealtimeProvider>) {
                 if !leases.accepts(generation_id) {
                     continue;
                 }
-                let Some(active) = active_generation.filter(|active| active.id == generation_id) else {
+                let Some(active) = active_generation
+                    .as_mut()
+                    .filter(|active| active.id == generation_id)
+                else {
                     continue;
                 };
                 stamp_conversation_version(&mut emission.event, &leases);
+                let latency_marks = active.latency.observe(&emission.event);
                 let media_time_us = active
                     .base_media_time_us
                     .saturating_add(emission.media_offset_us);
+                for mark in latency_marks {
+                    send_latency_mark(
+                        &outgoing_sender,
+                        session_id,
+                        &mut sequence,
+                        media_time_us,
+                        generation_id,
+                        mark,
+                    ).await;
+                }
                 if matches!(emission.event, RealtimeEvent::OutputAudioFrame(_)) {
                     playout.sent(media_time_us);
                 }
@@ -475,7 +539,20 @@ async fn handle_action(
             *active_generation = Some(ActiveGeneration {
                 id: generation_id,
                 base_media_time_us: media_time_us,
+                latency: LatencyTracker::new(),
             });
+            send_latency_mark(
+                outgoing_sender,
+                session_id,
+                sequence,
+                media_time_us,
+                generation_id,
+                LatencyMark {
+                    phase: LatencyPhase::ResponseCommitted,
+                    elapsed_us: 0,
+                },
+            )
+            .await;
             if provider_input
                 .send(ProviderInput::CommitResponse {
                     generation_id,
@@ -498,6 +575,15 @@ async fn handle_action(
         }
         InteractionAction::HardYield | InteractionAction::Replan => {
             if let Some(active) = active_generation.take() {
+                send_latency_mark(
+                    outgoing_sender,
+                    session_id,
+                    sequence,
+                    media_time_us,
+                    active.id,
+                    active.latency.mark(LatencyPhase::CancelRequested),
+                )
+                .await;
                 playout.cancel();
                 leases.revoke(active.id);
                 let _ = provider_input
@@ -722,6 +808,7 @@ fn provider_stream_id(event: &RealtimeEvent) -> &'static str {
         }
         RealtimeEvent::OutputTextDelta(_) | RealtimeEvent::OutputTextFinal(_) => "assistant_text",
         RealtimeEvent::TaskCreated(_) | RealtimeEvent::TaskResult(_) => "cognition",
+        RealtimeEvent::LatencyMark(_) => "telemetry",
         _ => "provider",
     }
 }
@@ -747,6 +834,28 @@ async fn send_protocol_error(
                 recoverable: true,
             }),
         ),
+    )
+    .await;
+}
+
+async fn send_latency_mark(
+    sender: &mpsc::Sender<EventEnvelope>,
+    session_id: Uuid,
+    sequence: &mut u64,
+    media_time_us: u64,
+    generation_id: Uuid,
+    mark: LatencyMark,
+) {
+    send_event(
+        sender,
+        EventEnvelope::new(
+            session_id,
+            "telemetry",
+            next_sequence(sequence),
+            media_time_us,
+            RealtimeEvent::LatencyMark(mark),
+        )
+        .with_generation(generation_id),
     )
     .await;
 }

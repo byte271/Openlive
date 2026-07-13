@@ -229,6 +229,13 @@ function handleEvent(envelope) {
     }
     return;
   }
+  if (type === "latency_mark") {
+    addTimeline(
+      "latency",
+      `${payload.phase}: ${(payload.elapsed_us / 1000).toFixed(1)} ms`,
+    );
+    return;
+  }
   if (type === "error") {
     addTimeline("error", `${payload.code}: ${payload.message}`);
   }

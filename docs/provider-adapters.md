@@ -67,7 +67,7 @@ The cascade buffers bounded 16 kHz PCM, sends WAV to transcription, calls chat c
 - `task_created` and `task_result`;
 - text and audio output.
 
-It accepts continuous input during output and supports cancellation, but its manifest correctly declares that barge-in and turn policy are not model-native. It currently waits for complete ASR, chat, and TTS responses; incremental streaming is a future optimization.
+It accepts continuous input during output and supports cancellation, but its manifest correctly declares that barge-in and turn policy are not model-native. Chat completions are consumed as SSE, clauses are queued early, and PCM TTS bodies are packetized while they arrive. ASR remains final-only.
 
 ### OpenAI-compatible realtime
 

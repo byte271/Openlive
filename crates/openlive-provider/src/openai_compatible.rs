@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use futures_util::StreamExt;
 use openlive_protocol::{
     AudioCapabilities, ControlCapabilities, DuplexCapabilities, ErrorEvent, LicenseClass, Modality,
     ModalityCapabilities, OutputAudioFrame, OutputTextDelta, OutputTextFinal, ProviderClass,
@@ -9,8 +10,8 @@ use openlive_protocol::{
 };
 use reqwest::{multipart, Client, RequestBuilder, Response};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use tokio::{sync::mpsc, time::sleep};
+use serde_json::{json, Value};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -217,106 +218,214 @@ impl OpenAiCompatibleProvider {
         {
             return;
         }
-        let answer = match self.complete(&transcript, &cancellation).await {
-            Ok(answer) => answer,
+        self.stream_answer(&sender, generation_id, task_id, transcript, &cancellation)
+            .await;
+    }
+
+    async fn stream_answer(
+        &self,
+        sender: &mpsc::Sender<ProviderEmission>,
+        generation_id: Uuid,
+        task_id: Uuid,
+        transcript: String,
+        cancellation: &CancellationToken,
+    ) {
+        let (completion_sender, mut completion_receiver) = mpsc::channel(64);
+        let (speech_sender, speech_receiver) = mpsc::channel(8);
+        let completion_provider = self.clone();
+        let completion_cancellation = cancellation.clone();
+        tokio::spawn(async move {
+            completion_provider
+                .stream_completion(transcript, completion_sender, completion_cancellation)
+                .await;
+        });
+        let speech_provider = self.clone();
+        let speech_output = sender.clone();
+        let speech_cancellation = cancellation.clone();
+        let speech_worker = tokio::spawn(async move {
+            speech_provider
+                .run_speech_worker(
+                    speech_receiver,
+                    speech_output,
+                    generation_id,
+                    speech_cancellation,
+                )
+                .await
+        });
+
+        let mut answer = String::new();
+        let mut segmenter = SpeechSegmenter::default();
+        while let Some(event) = completion_receiver.recv().await {
+            match event {
+                CompletionEvent::Delta(delta) => {
+                    answer.push_str(&delta);
+                    if send(
+                        sender,
+                        Some(generation_id),
+                        0,
+                        RealtimeEvent::OutputTextDelta(OutputTextDelta {
+                            delta: delta.clone(),
+                        }),
+                    )
+                    .await
+                    .is_err()
+                    {
+                        return;
+                    }
+                    for segment in segmenter.push(&delta) {
+                        if speech_sender.send(segment).await.is_err() {
+                            return;
+                        }
+                    }
+                }
+                CompletionEvent::Complete => break,
+                CompletionEvent::Error(error) => {
+                    send_pipeline_error(sender, generation_id, "cognition_failed", error).await;
+                    return;
+                }
+            }
+        }
+        if let Some(segment) = segmenter.finish() {
+            if speech_sender.send(segment).await.is_err() {
+                return;
+            }
+        }
+        drop(speech_sender);
+        finish_streamed_answer(sender, generation_id, task_id, answer, speech_worker).await;
+    }
+
+    async fn stream_completion(
+        &self,
+        transcript: String,
+        sender: mpsc::Sender<CompletionEvent>,
+        cancellation: CancellationToken,
+    ) {
+        let request = ChatRequest {
+            model: &self.config.llm_model,
+            messages: [
+                ChatMessage {
+                    role: "system",
+                    content: &self.config.system_prompt,
+                },
+                ChatMessage {
+                    role: "user",
+                    content: &transcript,
+                },
+            ],
+            stream: true,
+        };
+        let builder = self.authorize(
+            self.client
+                .post(self.endpoint("chat/completions"))
+                .json(&request),
+        );
+        let response = match send_cancelable(builder, &cancellation).await {
+            Ok(response) => response,
             Err(error) => {
-                send_pipeline_error(&sender, generation_id, "cognition_failed", error).await;
+                let _ = sender.send(CompletionEvent::Error(error)).await;
                 return;
             }
         };
-        if cancellation.is_cancelled() {
+        if !response.status().is_success() {
+            let error = checked_response(response)
+                .await
+                .err()
+                .unwrap_or_else(|| "completion endpoint failed".to_owned());
+            let _ = sender.send(CompletionEvent::Error(error)).await;
             return;
         }
-        let _ = send(
-            &sender,
-            Some(generation_id),
-            0,
-            RealtimeEvent::TaskResult(TaskResult {
-                task_id,
-                conversation_version: 0,
-                content: json!({ "text": answer.clone() }),
-                confidence: 1.0,
-            }),
-        )
-        .await;
-
-        for (index, word) in answer.split_whitespace().enumerate() {
-            let prefix = if index == 0 { "" } else { " " };
-            let offset = u64::try_from(index).unwrap_or_default() * 30_000;
-            if send(
-                &sender,
-                Some(generation_id),
-                offset,
-                RealtimeEvent::OutputTextDelta(OutputTextDelta {
-                    delta: format!("{prefix}{word}"),
-                }),
-            )
-            .await
-            .is_err()
-            {
-                return;
-            }
+        let is_event_stream = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.contains("text/event-stream"));
+        if is_event_stream {
+            stream_sse(response, &sender, &cancellation).await;
+        } else {
+            stream_json_completion(response, &sender).await;
         }
+    }
 
-        if send_state(&sender, generation_id, "synthesizing")
-            .await
-            .is_err()
-        {
-            return;
-        }
-        let pcm = match self.synthesize(&answer, &cancellation).await {
-            Ok(pcm) => pcm,
-            Err(error) => {
-                send_pipeline_error(&sender, generation_id, "synthesis_failed", error).await;
-                return;
-            }
-        };
-        if cancellation.is_cancelled() {
-            return;
-        }
-
-        let bytes_per_frame = usize::try_from(OUTPUT_SAMPLE_RATE).unwrap_or_default()
-            * 2
-            * usize::from(FRAME_DURATION_MS)
-            / 1_000;
-        for (index, chunk) in pcm.chunks(bytes_per_frame).enumerate() {
+    async fn run_speech_worker(
+        &self,
+        mut receiver: mpsc::Receiver<String>,
+        sender: mpsc::Sender<ProviderEmission>,
+        generation_id: Uuid,
+        cancellation: CancellationToken,
+    ) -> Result<(), String> {
+        let mut output_offset_us = 0_u64;
+        let mut announced = false;
+        while let Some(segment) = receiver.recv().await {
             if cancellation.is_cancelled() {
-                return;
+                return Ok(());
             }
-            let offset =
-                u64::try_from(index).unwrap_or_default() * u64::from(FRAME_DURATION_MS) * 1_000;
-            let mut frame = vec![0_u8; bytes_per_frame];
-            frame[..chunk.len()].copy_from_slice(chunk);
-            if send(
+            if !announced {
+                send_state(&sender, generation_id, "synthesizing")
+                    .await
+                    .map_err(|error| error.to_string())?;
+                announced = true;
+            }
+            self.stream_speech_segment(
+                &segment,
                 &sender,
-                Some(generation_id),
-                offset,
-                RealtimeEvent::OutputAudioFrame(OutputAudioFrame {
-                    audio_b64: BASE64.encode(frame),
-                    sample_rate: OUTPUT_SAMPLE_RATE,
-                    channels: 1,
-                    frame_duration_ms: FRAME_DURATION_MS,
-                }),
+                generation_id,
+                &mut output_offset_us,
+                &cancellation,
             )
-            .await
-            .is_err()
-            {
-                return;
-            }
-            sleep(Duration::from_millis(u64::from(FRAME_DURATION_MS))).await;
+            .await?;
         }
+        Ok(())
+    }
 
-        let final_offset = u64::try_from(pcm.len() / bytes_per_frame).unwrap_or_default()
-            * u64::from(FRAME_DURATION_MS)
-            * 1_000;
-        let _ = send(
-            &sender,
-            Some(generation_id),
-            final_offset,
-            RealtimeEvent::OutputTextFinal(OutputTextFinal { text: answer }),
-        )
-        .await;
-        let _ = send_state(&sender, generation_id, "complete").await;
+    async fn stream_speech_segment(
+        &self,
+        text: &str,
+        sender: &mpsc::Sender<ProviderEmission>,
+        generation_id: Uuid,
+        output_offset_us: &mut u64,
+        cancellation: &CancellationToken,
+    ) -> Result<(), String> {
+        let request = SpeechRequest {
+            model: &self.config.tts_model,
+            voice: &self.config.voice,
+            input: text,
+            response_format: "pcm",
+        };
+        let builder = self.authorize(
+            self.client
+                .post(self.endpoint("audio/speech"))
+                .json(&request),
+        );
+        let response = send_cancelable(builder, cancellation).await?;
+        if !response.status().is_success() {
+            return Err(checked_response(response)
+                .await
+                .err()
+                .unwrap_or_else(|| "speech endpoint failed".to_owned()));
+        }
+        let mut stream = response.bytes_stream();
+        let mut framer = PcmFramer::default();
+        loop {
+            let item = tokio::select! {
+                () = cancellation.cancelled() => return Ok(()),
+                item = stream.next() => item,
+            };
+            let Some(item) = item else {
+                break;
+            };
+            let chunk = item.map_err(|error| error.to_string())?;
+            for frame in framer.push(&chunk) {
+                emit_pcm_frame(sender, generation_id, *output_offset_us, frame).await?;
+                *output_offset_us =
+                    (*output_offset_us).saturating_add(u64::from(FRAME_DURATION_MS) * 1_000);
+            }
+        }
+        if let Some(frame) = framer.finish() {
+            emit_pcm_frame(sender, generation_id, *output_offset_us, frame).await?;
+            *output_offset_us =
+                (*output_offset_us).saturating_add(u64::from(FRAME_DURATION_MS) * 1_000);
+        }
+        Ok(())
     }
 
     async fn transcribe(
@@ -344,62 +453,6 @@ impl OpenAiCompatibleProvider {
         Ok(transcription.text)
     }
 
-    async fn complete(
-        &self,
-        transcript: &str,
-        cancellation: &CancellationToken,
-    ) -> Result<String, String> {
-        let request = ChatRequest {
-            model: &self.config.llm_model,
-            messages: [
-                ChatMessage {
-                    role: "system",
-                    content: &self.config.system_prompt,
-                },
-                ChatMessage {
-                    role: "user",
-                    content: transcript,
-                },
-            ],
-        };
-        let builder = self.authorize(
-            self.client
-                .post(self.endpoint("chat/completions"))
-                .json(&request),
-        );
-        let response = send_cancelable(builder, cancellation).await?;
-        let payload = checked_response(response).await?;
-        let completion: ChatResponse =
-            serde_json::from_slice(&payload).map_err(|error| error.to_string())?;
-        completion
-            .choices
-            .into_iter()
-            .next()
-            .map(|choice| choice.message.content)
-            .filter(|content| !content.trim().is_empty())
-            .ok_or_else(|| "completion returned no text".to_owned())
-    }
-
-    async fn synthesize(
-        &self,
-        text: &str,
-        cancellation: &CancellationToken,
-    ) -> Result<Vec<u8>, String> {
-        let request = SpeechRequest {
-            model: &self.config.tts_model,
-            voice: &self.config.voice,
-            input: text,
-            response_format: "pcm",
-        };
-        let builder = self.authorize(
-            self.client
-                .post(self.endpoint("audio/speech"))
-                .json(&request),
-        );
-        let response = send_cancelable(builder, cancellation).await?;
-        checked_response(response).await
-    }
-
     fn endpoint(&self, path: &str) -> String {
         format!("{}/{}", self.config.base_url.trim_end_matches('/'), path)
     }
@@ -411,6 +464,261 @@ impl OpenAiCompatibleProvider {
             builder
         }
     }
+}
+
+#[derive(Debug)]
+enum CompletionEvent {
+    Delta(String),
+    Complete,
+    Error(String),
+}
+
+async fn finish_streamed_answer(
+    sender: &mpsc::Sender<ProviderEmission>,
+    generation_id: Uuid,
+    task_id: Uuid,
+    answer: String,
+    speech_worker: tokio::task::JoinHandle<Result<(), String>>,
+) {
+    if answer.trim().is_empty() {
+        send_pipeline_error(
+            sender,
+            generation_id,
+            "cognition_failed",
+            "completion returned no text".to_owned(),
+        )
+        .await;
+        return;
+    }
+    let _ = send(
+        sender,
+        Some(generation_id),
+        0,
+        RealtimeEvent::TaskResult(TaskResult {
+            task_id,
+            conversation_version: 0,
+            content: json!({ "text": answer.clone() }),
+            confidence: 1.0,
+        }),
+    )
+    .await;
+    let _ = send(
+        sender,
+        Some(generation_id),
+        0,
+        RealtimeEvent::OutputTextFinal(OutputTextFinal { text: answer }),
+    )
+    .await;
+
+    match speech_worker.await {
+        Ok(Ok(())) => {
+            let _ = send_state(sender, generation_id, "complete").await;
+        }
+        Ok(Err(error)) => {
+            send_pipeline_error(sender, generation_id, "synthesis_failed", error).await;
+        }
+        Err(error) => {
+            send_pipeline_error(sender, generation_id, "synthesis_failed", error.to_string()).await;
+        }
+    }
+}
+
+async fn stream_sse(
+    response: Response,
+    sender: &mpsc::Sender<CompletionEvent>,
+    cancellation: &CancellationToken,
+) {
+    let mut stream = response.bytes_stream();
+    let mut pending = Vec::new();
+    loop {
+        let item = tokio::select! {
+            () = cancellation.cancelled() => return,
+            item = stream.next() => item,
+        };
+        let Some(item) = item else {
+            let _ = sender.send(CompletionEvent::Complete).await;
+            return;
+        };
+        let chunk = match item {
+            Ok(chunk) => chunk,
+            Err(error) => {
+                let _ = sender.send(CompletionEvent::Error(error.to_string())).await;
+                return;
+            }
+        };
+        pending.extend_from_slice(&chunk);
+        while let Some(newline) = pending.iter().position(|byte| *byte == b'\n') {
+            let line: Vec<u8> = pending.drain(..=newline).collect();
+            match parse_sse_line(&line) {
+                Ok(Some(CompletionEvent::Complete)) => {
+                    let _ = sender.send(CompletionEvent::Complete).await;
+                    return;
+                }
+                Ok(Some(event)) => {
+                    if sender.send(event).await.is_err() {
+                        return;
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    let _ = sender.send(CompletionEvent::Error(error)).await;
+                    return;
+                }
+            }
+        }
+    }
+}
+
+async fn stream_json_completion(response: Response, sender: &mpsc::Sender<CompletionEvent>) {
+    let payload = match checked_response(response).await {
+        Ok(payload) => payload,
+        Err(error) => {
+            let _ = sender.send(CompletionEvent::Error(error)).await;
+            return;
+        }
+    };
+    let completion: ChatResponse = match serde_json::from_slice(&payload) {
+        Ok(completion) => completion,
+        Err(error) => {
+            let _ = sender.send(CompletionEvent::Error(error.to_string())).await;
+            return;
+        }
+    };
+    let Some(content) = completion
+        .choices
+        .into_iter()
+        .next()
+        .map(|choice| choice.message.content)
+    else {
+        let _ = sender
+            .send(CompletionEvent::Error(
+                "completion returned no choices".to_owned(),
+            ))
+            .await;
+        return;
+    };
+    let _ = sender.send(CompletionEvent::Delta(content)).await;
+    let _ = sender.send(CompletionEvent::Complete).await;
+}
+
+fn parse_sse_line(line: &[u8]) -> Result<Option<CompletionEvent>, String> {
+    let line = String::from_utf8_lossy(line);
+    let trimmed = line.trim();
+    let Some(data) = trimmed.strip_prefix("data:") else {
+        return Ok(None);
+    };
+    let data = data.trim();
+    if data == "[DONE]" {
+        return Ok(Some(CompletionEvent::Complete));
+    }
+    let value: Value = serde_json::from_str(data).map_err(|error| error.to_string())?;
+    let delta = value
+        .pointer("/choices/0/delta/content")
+        .or_else(|| value.pointer("/choices/0/text"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if delta.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(CompletionEvent::Delta(delta.to_owned())))
+    }
+}
+
+#[derive(Default)]
+struct SpeechSegmenter {
+    buffer: String,
+}
+
+impl SpeechSegmenter {
+    fn push(&mut self, delta: &str) -> Vec<String> {
+        self.buffer.push_str(delta);
+        let mut segments = Vec::new();
+        while let Some(end) = self.next_boundary() {
+            let segment: String = self.buffer.drain(..end).collect();
+            let segment = segment.trim().to_owned();
+            if !segment.is_empty() {
+                segments.push(segment);
+            }
+        }
+        segments
+    }
+
+    fn finish(&mut self) -> Option<String> {
+        let remaining = std::mem::take(&mut self.buffer);
+        let remaining = remaining.trim();
+        (!remaining.is_empty()).then(|| remaining.to_owned())
+    }
+
+    fn next_boundary(&self) -> Option<usize> {
+        let mut character_count = 0_usize;
+        let mut fallback = None;
+        for (index, character) in self.buffer.char_indices() {
+            character_count = character_count.saturating_add(1);
+            let end = index + character.len_utf8();
+            if character_count >= 18 && matches!(character, '.' | '!' | '?' | ';' | ':' | '\n') {
+                return Some(end);
+            }
+            if character_count >= 40 && character.is_whitespace() {
+                fallback = Some(end);
+            }
+            if character_count >= 72 {
+                return fallback.or(Some(end));
+            }
+        }
+        None
+    }
+}
+
+#[derive(Default)]
+struct PcmFramer {
+    buffer: Vec<u8>,
+}
+
+impl PcmFramer {
+    fn push(&mut self, chunk: &[u8]) -> Vec<Vec<u8>> {
+        self.buffer.extend_from_slice(chunk);
+        let frame_size = pcm_frame_size();
+        let mut frames = Vec::new();
+        while self.buffer.len() >= frame_size {
+            let remainder = self.buffer.split_off(frame_size);
+            frames.push(std::mem::replace(&mut self.buffer, remainder));
+        }
+        frames
+    }
+
+    fn finish(mut self) -> Option<Vec<u8>> {
+        if self.buffer.is_empty() {
+            return None;
+        }
+        self.buffer.resize(pcm_frame_size(), 0);
+        Some(self.buffer)
+    }
+}
+
+fn pcm_frame_size() -> usize {
+    usize::try_from(OUTPUT_SAMPLE_RATE).unwrap_or_default() * 2 * usize::from(FRAME_DURATION_MS)
+        / 1_000
+}
+
+async fn emit_pcm_frame(
+    sender: &mpsc::Sender<ProviderEmission>,
+    generation_id: Uuid,
+    media_offset_us: u64,
+    frame: Vec<u8>,
+) -> Result<(), String> {
+    send(
+        sender,
+        Some(generation_id),
+        media_offset_us,
+        RealtimeEvent::OutputAudioFrame(OutputAudioFrame {
+            audio_b64: BASE64.encode(frame),
+            sample_rate: OUTPUT_SAMPLE_RATE,
+            channels: 1,
+            frame_duration_ms: FRAME_DURATION_MS,
+        }),
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 fn append_audio(audio: &mut Vec<u8>, frame: &openlive_protocol::InputAudioFrame) {
@@ -545,6 +853,7 @@ struct TranscriptionResponse {
 struct ChatRequest<'a> {
     model: &'a str,
     messages: [ChatMessage<'a>; 2],
+    stream: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -603,5 +912,26 @@ mod tests {
         };
         append_audio(&mut audio, &frame);
         assert_eq!(audio.len(), maximum);
+    }
+
+    #[test]
+    fn speech_segmenter_emits_early_complete_clause() {
+        let mut segmenter = SpeechSegmenter::default();
+        assert!(segmenter.push("This is a natural opening").is_empty());
+        let segments = segmenter.push(" sentence. The next thought");
+        assert_eq!(segments, vec!["This is a natural opening sentence."]);
+        assert_eq!(segmenter.finish().as_deref(), Some("The next thought"));
+    }
+
+    #[test]
+    fn pcm_framer_preserves_and_pads_stream_bytes() {
+        let mut packetizer = PcmFramer::default();
+        let output_frames = packetizer.push(&vec![1_u8; pcm_frame_size() + 100]);
+        assert_eq!(output_frames.len(), 1);
+        assert_eq!(output_frames[0].len(), pcm_frame_size());
+        let final_frame = packetizer.finish().expect("final frame");
+        assert_eq!(final_frame.len(), pcm_frame_size());
+        assert!(final_frame[..100].iter().all(|byte| *byte == 1));
+        assert!(final_frame[100..].iter().all(|byte| *byte == 0));
     }
 }

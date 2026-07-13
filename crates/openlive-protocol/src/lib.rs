@@ -91,6 +91,7 @@ pub enum RealtimeEvent {
     ProviderState(ProviderState),
     TaskCreated(TaskCreated),
     TaskResult(TaskResult),
+    LatencyMark(LatencyMark),
     Error(ErrorEvent),
     Ping,
     Pong,
@@ -195,6 +196,23 @@ pub struct TaskResult {
     pub conversation_version: u64,
     pub content: Value,
     pub confidence: f32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum LatencyPhase {
+    ResponseCommitted,
+    FirstProviderEvent,
+    FirstTextDelta,
+    FirstAudioFrame,
+    ProviderComplete,
+    CancelRequested,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LatencyMark {
+    pub phase: LatencyPhase,
+    pub elapsed_us: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

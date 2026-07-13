@@ -4,7 +4,7 @@ Openlive is an open, model-neutral runtime for continuous voice agents. It separ
 
 ## Current status
 
-**Version 0.3 is an experimental runtime—not a GPT-Live equivalent.**
+**Version 0.4 is an experimental runtime—not a GPT-Live equivalent.**
 
 Implemented:
 
@@ -20,6 +20,8 @@ Implemented:
 - Mock duplex provider for offline runtime development.
 - Configurable OpenAI-compatible ASR → LLM → PCM TTS provider.
 - OpenAI-compatible native realtime WebSocket speech provider.
+- Streaming chat SSE, early phrase segmentation, and streamed PCM TTS.
+- Generation-scoped monotonic latency telemetry and percentile reports.
 - Bounded WebSocket messages, provider queues, and captured audio.
 
 Still missing:
@@ -27,13 +29,15 @@ Still missing:
 - A production-tested open-source native speech-to-speech worker.
 - WebRTC/Opus transport, jitter buffering, FEC, and packet-loss concealment.
 - True aligned acoustic echo-reference correlation and speaker attribution.
-- Streaming ASR revisions, streaming LLM-to-TTS, and semantic endpointing.
+- Streaming ASR revisions and semantic endpointing.
 - Retrieval, tools, streaming safety, GPU scheduling, and production control plane.
 - Measured parity on Full-Duplex-Bench, VoiceBench, and network impairment suites.
 
 The default mock deliberately emits a tone. The optional real endpoint is a conventional cascade and cannot reproduce a model trained natively for full-duplex speech.
 
 The native realtime adapter preserves a continuous speech session and maps audio deltas, transcript deltas, cancellation, and provider state into Openlive. It requires a compatible external endpoint and has not been certified as GPT-Live-equivalent.
+
+The cascade adapter now consumes chat SSE incrementally, sends completed clauses to a sequential TTS worker, and packetizes streamed PCM into 20 ms frames. This reduces first-audio onset when endpoints support streaming, but multiple phrase-level TTS requests can introduce prosody seams.
 
 ## Requirements
 
@@ -95,6 +99,17 @@ cargo run -p openlive-runtime --bin openlive-replay -- \
 ```
 
 The same fixture produces the same interaction event IDs and decisions.
+
+## Latency report
+
+Capture gateway events as JSONL, then summarize generation phases:
+
+```bash
+cargo run -p openlive-runtime --bin openlive-latency-report -- \
+  fixtures/latency-sample.jsonl
+```
+
+The included fixture validates report parsing only; its values are not performance claims. See [`docs/evaluation.md`](docs/evaluation.md).
 
 ## Quality commands
 
