@@ -1,0 +1,183 @@
+class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.queue = [];
+    this.current = null;
+    this.queuedSamples = 0;
+    this.targetSamples = Math.round(sampleRate * 0.04);
+    this.minimumTargetSamples = Math.round(sampleRate * 0.03);
+    this.maximumTargetSamples = Math.round(sampleRate * 0.12);
+    this.stableSamples = 0;
+    this.started = false;
+    this.underflowReported = false;
+    this.lastGenerationId = null;
+    this.completeGenerations = new Set();
+    this.fadeGenerationId = null;
+    this.fadeRemaining = 0;
+    this.fadeTotal = 1;
+    this.port.onmessage = ({ data }) => this.handleMessage(data);
+  }
+
+  handleMessage(message) {
+    if (message.type === "enqueue") {
+      const samples = new Float32Array(message.samples);
+      this.queue.push({
+        generationId: message.generationId,
+        mediaEndUs: message.mediaEndUs,
+        samples,
+        offset: 0,
+      });
+      this.queuedSamples += samples.length;
+      this.underflowReported = false;
+      this.postBufferState();
+      return;
+    }
+    if (message.type === "complete") {
+      this.completeGenerations.add(message.generationId);
+      return;
+    }
+    if (message.type === "cancel") {
+      this.cancelGeneration(message.generationId, message.fadeMs ?? 35);
+    }
+  }
+
+  cancelGeneration(generationId, fadeMs) {
+    const retained = [];
+    for (const frame of this.queue) {
+      if (frame.generationId === generationId) {
+        this.queuedSamples -= frame.samples.length - frame.offset;
+      } else {
+        retained.push(frame);
+      }
+    }
+    this.queue = retained;
+    this.completeGenerations.add(generationId);
+    if (this.current?.generationId === generationId) {
+      this.fadeGenerationId = generationId;
+      this.fadeTotal = Math.max(1, Math.round(sampleRate * fadeMs / 1000));
+      this.fadeRemaining = this.fadeTotal;
+    } else {
+      this.port.postMessage({ type: "canceled", generationId });
+      this.completeGenerations.delete(generationId);
+    }
+    this.postBufferState();
+  }
+
+  process(_inputs, outputs) {
+    const output = outputs[0]?.[0];
+    if (!output) return true;
+    output.fill(0);
+
+    if (!this.started) {
+      const completedQueue = this.queue.some((frame) =>
+        this.completeGenerations.has(frame.generationId),
+      );
+      if (this.queuedSamples < this.targetSamples && !completedQueue) {
+        return true;
+      }
+      this.started = true;
+    }
+
+    let wroteSamples = false;
+    for (let index = 0; index < output.length; index += 1) {
+      if (!this.current) {
+        this.current = this.queue.shift() ?? null;
+        if (!this.current) {
+          this.handleUnderflow();
+          break;
+        }
+        this.lastGenerationId = this.current.generationId;
+      }
+
+      let value = this.current.samples[this.current.offset];
+      if (this.fadeGenerationId === this.current.generationId) {
+        value *= this.fadeRemaining / this.fadeTotal;
+        this.fadeRemaining -= 1;
+        if (this.fadeRemaining <= 0) {
+          this.dropCanceledCurrent();
+          continue;
+        }
+      }
+      output[index] = value;
+      this.current.offset += 1;
+      this.queuedSamples = Math.max(0, this.queuedSamples - 1);
+      this.stableSamples += 1;
+      wroteSamples = true;
+
+      if (this.current.offset >= this.current.samples.length) {
+        this.port.postMessage({
+          type: "played",
+          generationId: this.current.generationId,
+          mediaEndUs: this.current.mediaEndUs,
+        });
+        this.current = null;
+      }
+    }
+
+    if (wroteSamples && this.stableSamples >= sampleRate * 10) {
+      this.targetSamples = Math.max(
+        this.minimumTargetSamples,
+        this.targetSamples - Math.round(sampleRate * 0.005),
+      );
+      this.stableSamples = 0;
+      this.postBufferState();
+    }
+    return true;
+  }
+
+  dropCanceledCurrent() {
+    const generationId = this.current.generationId;
+    this.queuedSamples = Math.max(
+      0,
+      this.queuedSamples - (this.current.samples.length - this.current.offset),
+    );
+    this.current = null;
+    this.fadeGenerationId = null;
+    this.fadeRemaining = 0;
+    this.port.postMessage({ type: "canceled", generationId });
+    this.completeGenerations.delete(generationId);
+    this.postBufferState();
+  }
+
+  handleUnderflow() {
+    this.started = false;
+    if (
+      this.lastGenerationId &&
+      !this.completeGenerations.has(this.lastGenerationId) &&
+      !this.underflowReported
+    ) {
+      this.targetSamples = Math.min(
+        this.maximumTargetSamples,
+        this.targetSamples + Math.round(sampleRate * 0.01),
+      );
+      this.stableSamples = 0;
+      this.underflowReported = true;
+      this.port.postMessage({
+        type: "underflow",
+        generationId: this.lastGenerationId,
+        targetMs: this.targetSamples / sampleRate * 1000,
+      });
+    }
+    if (
+      this.lastGenerationId &&
+      this.completeGenerations.has(this.lastGenerationId)
+    ) {
+      this.port.postMessage({
+        type: "idle",
+        generationId: this.lastGenerationId,
+      });
+      this.completeGenerations.delete(this.lastGenerationId);
+    }
+    this.postBufferState();
+  }
+
+  postBufferState() {
+    this.port.postMessage({
+      type: "buffer",
+      targetMs: this.targetSamples / sampleRate * 1000,
+      queuedMs: this.queuedSamples / sampleRate * 1000,
+    });
+  }
+}
+
+registerProcessor("openlive-playback", OpenlivePlaybackProcessor);

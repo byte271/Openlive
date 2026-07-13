@@ -7,6 +7,7 @@ const elements = {
   speechProbability: document.querySelector("#speechProbability"),
   interactionState: document.querySelector("#interactionState"),
   outputGain: document.querySelector("#outputGain"),
+  playbackBuffer: document.querySelector("#playbackBuffer"),
   assistantText: document.querySelector("#assistantText"),
   providerHint: document.querySelector("#providerHint"),
   timeline: document.querySelector("#timeline"),
@@ -21,8 +22,9 @@ let microphoneStream;
 let captureNode;
 let outputGain;
 let outputGainConnected = false;
-let nextPlaybackTime = 0;
-let activeSources = new Map();
+let playbackNode;
+let playbackModulePromise;
+let playbackFrameCounts = new Map();
 let canceledGenerations = new Set();
 let assistantText = "";
 let localNoiseFloor = 0.006;
@@ -217,7 +219,7 @@ function handleEvent(envelope) {
   }
   if (type === "output_audio_cancel") {
     addTimeline("cancel", payload.reason);
-    stopGeneration(envelope.generation_id);
+    stopGeneration(envelope.generation_id, payload.fade_ms);
     return;
   }
   if (type === "provider_state") {
@@ -226,6 +228,12 @@ function handleEvent(envelope) {
       hardYielded = false;
       locallyDucked = false;
       setOutputGain(1, 0.02);
+    }
+    if (payload.state === "complete" && playbackNode) {
+      playbackNode.port.postMessage({
+        type: "complete",
+        generationId: envelope.generation_id,
+      });
     }
     return;
   }
@@ -245,72 +253,49 @@ async function playPcmFrame(envelope) {
   const { generation_id: generationId, media_time_us: frameMediaTimeUs } =
     envelope;
   const payload = envelope.payload;
-  audioContext ??= new AudioContext({ latencyHint: "interactive" });
-  await audioContext.resume();
-  ensureOutputGain();
+  await ensurePlayback();
 
   const bytes = base64ToBytes(payload.audio_b64);
-  const samples = new Int16Array(
+  const pcm = new Int16Array(
     bytes.buffer,
     bytes.byteOffset,
     bytes.byteLength / 2,
   );
-  const buffer = audioContext.createBuffer(1, samples.length, payload.sample_rate);
-  const channel = buffer.getChannelData(0);
-  for (let index = 0; index < samples.length; index += 1) {
-    channel[index] = samples[index] / 32768;
+  const decoded = new Float32Array(pcm.length);
+  for (let index = 0; index < pcm.length; index += 1) {
+    decoded[index] = pcm[index] / 32768;
   }
-
-  const source = audioContext.createBufferSource();
-  source.buffer = buffer;
-  source.connect(outputGain);
-  const startAt = Math.max(audioContext.currentTime + 0.025, nextPlaybackTime);
-  nextPlaybackTime = startAt + buffer.duration;
-  source.start(startAt);
-  const sources = activeSources.get(generationId) ?? new Set();
-  sources.add(source);
-  activeSources.set(generationId, sources);
-  source.onended = () => {
-    sources.delete(source);
-    if (sources.size === 0) activeSources.delete(generationId);
-    if (
-      !canceledGenerations.has(generationId) &&
-      socket?.readyState === WebSocket.OPEN &&
-      sessionId
-    ) {
-      sendEvent(
-        "assistant_playout",
-        frameMediaTimeUs + payload.frame_duration_ms * 1000,
-        "output_audio_played",
-        {
-          last_media_time_us:
-            frameMediaTimeUs + payload.frame_duration_ms * 1000,
-        },
-        generationId,
-      );
-    }
-  };
+  const samples = resample(decoded, payload.sample_rate, audioContext.sampleRate);
+  playbackFrameCounts.set(
+    generationId,
+    (playbackFrameCounts.get(generationId) ?? 0) + 1,
+  );
+  playbackNode.port.postMessage(
+    {
+      type: "enqueue",
+      generationId,
+      mediaEndUs: frameMediaTimeUs + payload.frame_duration_ms * 1000,
+      samples: samples.buffer,
+    },
+    [samples.buffer],
+  );
 }
 
-function stopGeneration(generationId) {
+function stopGeneration(generationId, fadeMs = 35) {
   if (generationId) {
     canceledGenerations.add(generationId);
     while (canceledGenerations.size > 256) {
       canceledGenerations.delete(canceledGenerations.values().next().value);
     }
   }
-  const sources = activeSources.get(generationId);
-  if (sources) {
-    for (const source of sources) {
-      try {
-        source.stop();
-      } catch {
-        // Already stopped.
-      }
-    }
-    activeSources.delete(generationId);
+  playbackFrameCounts.delete(generationId);
+  if (playbackNode && generationId) {
+    playbackNode.port.postMessage({
+      type: "cancel",
+      generationId,
+      fadeMs,
+    });
   }
-  nextPlaybackTime = audioContext?.currentTime ?? 0;
   setOutputGain(1, 0.05);
 }
 
@@ -330,6 +315,63 @@ function ensureOutputGain() {
   if (!outputGainConnected) {
     outputGain.connect(audioContext.destination);
     outputGainConnected = true;
+  }
+}
+
+async function ensurePlayback() {
+  audioContext ??= new AudioContext({ latencyHint: "interactive" });
+  await audioContext.resume();
+  ensureOutputGain();
+  if (!playbackNode) {
+    playbackModulePromise ??= audioContext.audioWorklet.addModule(
+      "/audio-playback-worklet.js",
+    );
+    await playbackModulePromise;
+    playbackNode = new AudioWorkletNode(audioContext, "openlive-playback", {
+      outputChannelCount: [1],
+    });
+    playbackNode.port.onmessage = ({ data }) => handlePlaybackMessage(data);
+    playbackNode.connect(outputGain);
+  }
+}
+
+function handlePlaybackMessage(message) {
+  if (message.type === "played") {
+    const remaining = Math.max(
+      0,
+      (playbackFrameCounts.get(message.generationId) ?? 1) - 1,
+    );
+    if (remaining === 0) playbackFrameCounts.delete(message.generationId);
+    else playbackFrameCounts.set(message.generationId, remaining);
+    if (
+      !canceledGenerations.has(message.generationId) &&
+      socket?.readyState === WebSocket.OPEN &&
+      sessionId
+    ) {
+      sendEvent(
+        "assistant_playout",
+        message.mediaEndUs,
+        "output_audio_played",
+        { last_media_time_us: message.mediaEndUs },
+        message.generationId,
+      );
+    }
+    return;
+  }
+  if (message.type === "canceled" || message.type === "idle") {
+    playbackFrameCounts.delete(message.generationId);
+    return;
+  }
+  if (message.type === "underflow") {
+    addTimeline(
+      "jitter",
+      `Playback underflow; target raised to ${message.targetMs.toFixed(0)} ms`,
+    );
+    return;
+  }
+  if (message.type === "buffer") {
+    elements.playbackBuffer.textContent =
+      `${message.queuedMs.toFixed(0)} / ${message.targetMs.toFixed(0)} ms`;
   }
 }
 
@@ -368,8 +410,8 @@ function applyLocalInterruption(probability) {
 }
 
 function hasActiveOutput() {
-  for (const sources of activeSources.values()) {
-    if (sources.size > 0) return true;
+  for (const count of playbackFrameCounts.values()) {
+    if (count > 0) return true;
   }
   return false;
 }

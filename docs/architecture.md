@@ -115,17 +115,17 @@ The production path should use WebRTC with Opus, DTLS-SRTP, ICE/TURN, jitter buf
 
 ## Cancellation and playout
 
-The browser acknowledges completed frames with `output_audio_played`. The gateway tracks the latest sent and played media times and only applies its echo prior while audio remains unacknowledged.
+The browser queues resampled PCM in a persistent playback AudioWorklet and acknowledges frames from the render thread with `output_audio_played`. The queue begins at a 40 ms target, expands by 10 ms after underflow up to 120 ms, and contracts during stable playback to a 30 ms floor. The gateway tracks the latest sent and played media times and only applies its echo prior while audio remains unacknowledged.
 
 On `hard_yield`:
 
 1. the decision identifies the active generation;
-2. the browser stops queued sources immediately;
+2. the playback worklet drops queued frames and fades the active generation;
 3. the provider receives `CancelGeneration`;
 4. the answer lease is revoked;
 5. `output_audio_cancel` records the requested cutoff.
 
-Exact partial-frame audible cutoff still requires a richer playout report.
+The worklet reports complete rendered frames; exact partial-frame cutoff telemetry remains future work.
 
 ## Safety trajectory
 

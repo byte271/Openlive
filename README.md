@@ -4,7 +4,7 @@ Openlive is an open, model-neutral runtime for continuous voice agents. It separ
 
 ## Current status
 
-**Version 0.4 is an experimental runtime—not a GPT-Live equivalent.**
+**Version 0.5 is an experimental runtime—not a GPT-Live equivalent.**
 
 Implemented:
 
@@ -22,12 +22,15 @@ Implemented:
 - OpenAI-compatible native realtime WebSocket speech provider.
 - Streaming chat SSE, early phrase segmentation, and streamed PCM TTS.
 - Generation-scoped monotonic latency telemetry and percentile reports.
+- Sample-accurate AudioWorklet playback instead of one browser node per frame.
+- Adaptive 30–120 ms playback target with underflow-driven jitter recovery.
+- Worklet-side generation cancellation with a short audible fade.
 - Bounded WebSocket messages, provider queues, and captured audio.
 
 Still missing:
 
 - A production-tested open-source native speech-to-speech worker.
-- WebRTC/Opus transport, jitter buffering, FEC, and packet-loss concealment.
+- WebRTC/Opus transport with packet-level jitter handling, FEC, and loss concealment.
 - True aligned acoustic echo-reference correlation and speaker attribution.
 - Streaming ASR revisions and semantic endpointing.
 - Retrieval, tools, streaming safety, GPU scheduling, and production control plane.
@@ -38,6 +41,8 @@ The default mock deliberately emits a tone. The optional real endpoint is a conv
 The native realtime adapter preserves a continuous speech session and maps audio deltas, transcript deltas, cancellation, and provider state into Openlive. It requires a compatible external endpoint and has not been certified as GPT-Live-equivalent.
 
 The cascade adapter now consumes chat SSE incrementally, sends completed clauses to a sequential TTS worker, and packetizes streamed PCM into 20 ms frames. This reduces first-audio onset when endpoints support streaming, but multiple phrase-level TTS requests can introduce prosody seams.
+
+Browser playback now runs through a persistent AudioWorklet queue. It starts with a 40 ms target, raises the target after underflow, slowly reduces it during stable playback, reports frame completion from the render thread, and fades an exact generation during cancellation.
 
 ## Requirements
 
