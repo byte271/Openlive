@@ -1,5 +1,5 @@
 /**
- * Openlive 1.3 — quota-tracker.js
+ * Openlive 26.7.14.1 — quota-tracker.js
  *
  * Session-length quota tracker modeled on ChatGPT Advanced Voice Mode's daily
  * limit behavior. AVM historically gave Plus users ~1 hour/day of unlimited

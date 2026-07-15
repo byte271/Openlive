@@ -1,14 +1,14 @@
-# Openlive vs. GPT-Live — Parity Matrix (26.7.14)
+# Openlive vs. GPT-Live — Parity Matrix (26.7.14.1)
 
 **Scope:** This document is the authoritative answer to "is Openlive a
 clone of gpt-live?" It maps every user-visible GPT-Live / ChatGPT
-Advanced Voice Mode (AVM) feature to Openlive's 26.7.14 status, and
+Advanced Voice Mode (AVM) feature to Openlive's 26.7.14.1 status, and
 labels each row as **CLONE** (matched), **DIFFERENT** (deliberately
 divergent), or **GAP** (still missing).
 
 The companion document [`docs/gpt-live-benchmark.md`](gpt-live-benchmark.md)
 contains the underlying research and the v1.1 → v1.2 → v1.3 → v2.0.0 →
-26.7.14 trajectory.
+26.7.14.1 trajectory.
 
 ---
 
@@ -27,11 +27,14 @@ contains the underlying research and the v1.1 → v1.2 → v1.3 → v2.0.0 →
 
 ---
 
-## What 26.7.14 closes
+## What 26.7.14.1 closes
 
-The v2.0.0 → 26.7.14 migration folds the Phase 7/8 task orchestration
-work into the mainline release. Three former GAPs are now CLONE or
-DIFFERENT:
+**26.7.14.1 is a patch release.** It carries no behavioral changes over
+26.7.14 — only version-string alignment across the workspace, a new
+patch-release-notes document, and refreshed parity-matrix version
+references. The substantive work shipped in 26.7.14 (the v2.0.0 → 26.7.14
+migration that folded Phase 7/8 task orchestration into the mainline
+release) is unchanged. Three former GAPs are now CLONE or DIFFERENT:
 
 1. **Task acknowledgement & lifecycle** — `task_requested` →
    `task_acknowledged` → `task_outcome` is a full lifecycle that AVM's
@@ -53,7 +56,7 @@ DIFFERENT:
 
 Legend: ✅ CLONE · 🟡 DIFFERENT · ❌ GAP
 
-| # | Feature | GPT-Live / AVM behavior | Openlive 26.7.14 status | Category |
+| # | Feature | GPT-Live / AVM behavior | Openlive 26.7.14.1 status | Category |
 |---|---------|-------------------------|-------------------------|----------|
 | 1 | Signature voice orb | Blue animated orb, state-driven | Multi-layer procedural orb with refined blue palette | ✅ CLONE (original visual) |
 | 2 | State-driven orb color | Blue / cyan / violet / red shifts | 11 named modes, each with its own palette | ✅ CLONE |
@@ -76,14 +79,14 @@ Legend: ✅ CLONE · 🟡 DIFFERENT · ❌ GAP
 | 19 | Rich visual cards (weather, stock, maps, sports) | Inline cards during GPT-Live conversations | 7 card templates (weather/stock/sports/maps/web_search/code/translation) + generic fallback; render in transcript | ✅ CLONE (UI; provider must emit) |
 | 20 | Function calling / tools | `tools` array; `response.function_call_arguments.delta` | Tool-call cards in transcript with streaming args, status, result; builtin tool descriptors | ✅ CLONE (UI; provider must emit) |
 | 21 | Remote MCP server tools | `tools: [{ type: "mcp" }]` GA | Tool-call UI handles MCP-emitted calls the same as function calls | ✅ CLONE (UI; MCP client adapter is backend work) |
-| 22 | Slow-thinking / GPT-5.5 delegation | GPT-Live delegates complex reasoning | Cognition plane async; task orchestrator (26.7.14) provides the lifecycle scaffold; pluggable deep cognition tracked for future release | 🟡 DIFFERENT (scaffold ready) |
+| 22 | Slow-thinking / GPT-5.5 delegation | GPT-Live delegates complex reasoning | Cognition plane async; task orchestrator (26.7.14.1) provides the lifecycle scaffold; pluggable deep cognition tracked for future release | 🟡 DIFFERENT (scaffold ready) |
 | 23 | Transcript editing | Editable after turn in AVM | Transcript is read-only | ❌ GAP (tracked for future release) |
 | 24 | One-tap entry | Tap waveform icon to start | One-tap primary button or spacebar | ✅ CLONE |
 | 25 | Auto-endpointing (server VAD) | `turn_detection: server_vad` | Openlive endpointing sidecar (acoustic + prosodic); provider VAD passthrough tracked | 🟡 DIFFERENT (Openlive's own sidecar) |
 | 26 | Semantic VAD | `turn_detection: semantic_vad` GA | ❌ Openlive endpointing is acoustic-only | ❌ GAP (tracked for future release) |
 | 27 | Streaming user-side transcription | `input_audio_transcription.delta` | User transcript delta + final handlers; rendered in transcript drawer | ✅ CLONE (UI ready) |
 | 28 | Streaming assistant transcript | `response.audio_transcript.delta` | Assistant text delta + final handlers; rendered in transcript drawer | ✅ CLONE |
-| 29 | Reconnect with state recovery | Clients rebuild from `conversation.item.create` | Bounded exponential backoff; mic preserved; stale playback cancelled; **`session_resume` with gateway-side `event_id` dedup and 30 s buffered-outcomes TTL** (26.7.14) | ✅ CLONE (now matches + exceeds) |
+| 29 | Reconnect with state recovery | Clients rebuild from `conversation.item.create` | Bounded exponential backoff; mic preserved; stale playback cancelled; **`session_resume` with gateway-side `event_id` dedup and 30 s buffered-outcomes TTL** (26.7.14.1) | ✅ CLONE (now matches + exceeds) |
 | 30 | WebRTC + Opus transport | Native WebRTC peer connection | Binary WebSocket PCM only; WebRTC tracked for future release | ❌ GAP (largest remaining) |
 | 31 | SIP / telephony transport | SIP inbound/outbound | ❌ Out of scope | ❌ GAP |
 | 32 | Audio format flexibility | pcm16, g711_ulaw, g711_alaw | PCM16 24 kHz only | 🟡 DIFFERENT (Opus planned) |
@@ -101,7 +104,7 @@ Legend: ✅ CLONE · 🟡 DIFFERENT · ❌ GAP
 
 ---
 
-## Benchmark: task acknowledgement latency (26.7.14)
+## Benchmark: task acknowledgement latency (26.7.14.1)
 
 GPT-Live's documented time-to-first-byte is ~500 ms WebSocket / ~300–600 ms
 steady-state WebRTC (Latent.Space; Forasoft). OpenLive's task
@@ -126,7 +129,7 @@ approaches the AVM band.
 
 ## What "open-source clone" means here
 
-Openlive 26.7.14 is a **behavioral clone** of gpt-live's voice surface,
+Openlive 26.7.14.1 is a **behavioral clone** of gpt-live's voice surface,
 not a **visual clone**. The orb, palettes, copy, layout, and animation
 are original Openlive geometry — they do not reproduce any proprietary
 interface or its assets. This is the right call legally (AVM's visual
@@ -165,7 +168,7 @@ Six areas where Openlive diverges from AVM by design:
 
 ## What's still missing (GAPs)
 
-Three areas where Openlive 26.7.14 is still behind AVM:
+Three areas where Openlive 26.7.14.1 is still behind AVM:
 
 1. **WebRTC + Opus transport** — the largest remaining gap. The binary
    WebSocket PCM path works but lacks packet-level FEC and NAT
@@ -180,10 +183,10 @@ verbatim).
 
 ## Conclusion
 
-Openlive 26.7.14 is a credible open-source clone of gpt-live's voice
+Openlive 26.7.14.1 is a credible open-source clone of gpt-live's voice
 surface. The 26 CLONE features cover every user-visible affordance AVM
 exposes; the 6 DIFFERENT features are deliberate improvements; the 3
 GAPs are scoped to transport-layer work that does not affect the
 user-visible surface.
 
-The clone contract is met for 26.7.14 scope.
+The clone contract is met for 26.7.14.1 scope.

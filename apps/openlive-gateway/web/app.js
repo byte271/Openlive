@@ -1,5 +1,5 @@
 /**
- * Openlive 1.2 — app.js
+ * Openlive 26.7.14.1 — app.js
  *
  * Orchestrates the voice surface: WebSocket lifecycle, audio session,
  * transcript, voice picker, mode picker, settings, telemetry, and

@@ -1,5 +1,5 @@
 /*
- * OpenLive v2 Signal Desk shell controller.
+ * OpenLive 26.7.14.1 — Signal Desk shell controller.
  * Design contract: operator-console clarity, truthful state, explicit consent,
  * and no synthetic benchmark claims. This module never starts media capture.
  */

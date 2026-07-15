@@ -1,5 +1,5 @@
 /**
- * Openlive 1.2 — voice-visualizer.js
+ * Openlive 26.7.14.1 — voice-visualizer.js
  *
  * Multi-layer canvas voice orb. The composition is original Openlive
  * geometry — it does not reproduce any proprietary visual.

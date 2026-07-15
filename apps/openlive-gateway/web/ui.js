@@ -1,5 +1,5 @@
 /**
- * Openlive 1.2 — ui.js
+ * Openlive 26.7.14.1 — ui.js
  *
  * DOM binding layer. Resolves elements once, exposes mutation helpers, and
  * keeps the rest of the codebase free of `document.querySelector` calls.

@@ -1,5 +1,5 @@
 /* =========================================================================
-   Openlive 1.2 — Voice surface design system
+   Openlive 26.7.14.1 — Voice surface design system
    --------------------------------------------------------------------------
    Sections:
      1. Tokens (themes, motion, typography, elevation)
@@ -1674,7 +1674,7 @@ html[data-theme="signal"] body[data-mode="connection_error"] {
 }
 
 /* =========================================================================
-   13. Openlive 1.3 — gpt-live parity additions
+   13. Openlive 26.7.14.1 — gpt-live parity additions
    --------------------------------------------------------------------------
    Styles for: quota pill, instructions sheet + axis buttons, instructions
    badge, camera/screen-share dock buttons, layout toggle, backchannel
@@ -2128,7 +2128,7 @@ body[data-layout="inline"] .transcript-drawer[data-open="false"] {
 
 
 /* ==========================================================================
-   OpenLive v2.0 — Signal Desk
+   OpenLive 26.7.14.1 — Signal Desk
    Design philosophy: a live technical instrument where conversation, delegated
    work, and evidence share one legible surface. Cyan verifies transport,
    coral marks intervention, yellow requests judgment, green confirms work.

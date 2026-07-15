@@ -1,5 +1,5 @@
 /*
- * OpenLive v2 Phase 7 — Task Orchestrator (browser side).
+ * OpenLive 26.7.14.1 — Task Orchestrator (browser side).
  *
  * Mirrors the gateway TaskOrchestrator contract:
  *   - requestTask(intent, options) → emits a `task_requested` envelope via

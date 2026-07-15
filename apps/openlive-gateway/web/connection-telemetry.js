@@ -1,5 +1,5 @@
 /**
- * Openlive 1.2 — connection-telemetry.js
+ * Openlive 26.7.14.1 — connection-telemetry.js
  *
  * Rolling-window latency and connection-quality telemetry derived from
  * gateway `latency_mark` events and playout acknowledgments. The module

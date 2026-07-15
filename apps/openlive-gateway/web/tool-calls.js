@@ -1,5 +1,5 @@
 /**
- * Openlive 1.3 — tool-calls.js
+ * Openlive 26.7.14.1 — tool-calls.js
  *
  * Data model for function-calling / tool invocations surfaced in the
  * transcript. Mirrors the OpenAI Realtime API event shape:

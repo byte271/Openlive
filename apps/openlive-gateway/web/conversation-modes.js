@@ -1,5 +1,5 @@
 /**
- * Openlive 1.2 — conversation-modes.js
+ * Openlive 26.7.14.1 — conversation-modes.js
  *
  * Conversation mode presets. Each mode packages:
  *   - id, name, description, glyph for the picker UI

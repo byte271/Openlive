@@ -1,5 +1,5 @@
 /**
- * Openlive 1.2 — settings-store.js
+ * Openlive 26.7.14.1 — settings-store.js
  *
  * Thin, typed wrapper over localStorage that persists user UI preferences
  * under a single namespaced key. All v1.2 keys live under `openlive.v1.2.*`.

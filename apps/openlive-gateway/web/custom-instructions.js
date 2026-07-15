@@ -1,5 +1,5 @@
 /**
- * Openlive 1.3 — custom-instructions.js
+ * Openlive 26.7.14.1 — custom-instructions.js
  *
  * Inline panel state for the AVM-style "talk quicker or slower, with more
  * detail or more concise" affordance. Unlike the v1.2 settings-sheet version,

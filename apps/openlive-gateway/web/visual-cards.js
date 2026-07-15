@@ -1,5 +1,5 @@
 /**
- * Openlive 1.3 — visual-cards.js
+ * Openlive 26.7.14.1 — visual-cards.js
  *
  * Rich visual card schemas and render helpers for the transcript. Mirrors
  * GPT-Live's inline rich cards (weather, stock, sports, maps) that surface

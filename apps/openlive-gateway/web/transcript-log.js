@@ -1,5 +1,5 @@
 /**
- * Openlive 1.2 — transcript-log.js
+ * Openlive 26.7.14.1 — transcript-log.js
  *
  * In-memory conversation transcript. Holds user, assistant, and system
  * messages, supports streaming deltas, finalization, and bounded history.

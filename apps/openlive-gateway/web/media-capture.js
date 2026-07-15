@@ -1,5 +1,5 @@
 /**
- * OpenLive v2.0 — truthful visual capture lifecycle.
+ * OpenLive 26.7.14.1 — truthful visual capture lifecycle.
  *
  * Camera and screen state is derived from MediaStreamTrack.readyState rather
  * than button state. Capture remains local until the caller explicitly asks
