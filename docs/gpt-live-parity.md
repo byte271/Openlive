@@ -8,7 +8,7 @@ divergent), or **GAP** (still missing).
 
 The companion document [`docs/gpt-live-benchmark.md`](gpt-live-benchmark.md)
 contains the underlying research and the v1.1 → v1.2 → v1.3 → v2.0.0 →
-26.7.14.1 trajectory.
+26.7.14 → 26.7.14.1 trajectory.
 
 ---
 

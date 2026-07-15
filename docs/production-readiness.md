@@ -2,7 +2,7 @@
 
 This document is a release gate, not a roadmap claim. A feature is **verified** only when its implementation and reproducible tests are present in this repository.
 
-## Verified in 1.1
+## Verified in 26.7.14.1
 
 - Binary WebSocket PCM framing with sequence and media timestamps.
 - Continuous OpenAI-Realtime-compatible session adapter, cancellation, transcript/audio deltas, and provider state mapping.
@@ -12,8 +12,15 @@ This document is a release gate, not a roadmap claim. A feature is **verified** 
 - One-shot interruption repair context.
 - Sample-aligned browser echo-reference correlation and gateway echo-evidence fusion.
 - Runtime answer leases and latency/replay utilities.
+- Capability negotiation (v2 protocol revision 3): `capability_offer` / `capability_selected` with provider manifest selection.
+- Truthful visual input lifecycle: camera/screen state derived from `MediaStreamTrack.readyState`; bounded explicit snapshots; provider visual-input negotiation.
+- Task orchestration: `task_requested` → `task_acknowledged` → `task_outcome` with deadline enforcement, cancel, and generation-scoped completion. Measured p50 = 2 ms, p95 = 2 ms over 50 samples.
+- Bidirectional evidence linking with `TaskProof` / `TaskContext` / `TaskFailure` link types, confidence scores, and dedup by `(source, target, link_type)`.
+- Session resume with gateway-side `event_id` dedup, 30 s buffered-outcomes TTL, and O(log n) `BTreeMap` range-query replay.
+- LiveBench scenario suite: 3 deterministic scenarios (acknowledgement latency, evidence linkage completeness, resume without duplication).
+- 4 integration tests spawning the real gateway binary over a WebSocket.
 
-These were validated locally with the complete Rust workspace tests, browser tests, strict Clippy, rustfmt, and an optimized release build.
+These are validated with 71 Rust tests, 73 JS tests, strict Clippy pedantic (zero warnings), rustfmt, and an optimized release build.
 
 ## Not implemented or not verified
 
@@ -26,7 +33,7 @@ These were validated locally with the complete Rust workspace tests, browser tes
 | Target-speaker attribution | Heuristic probability only | Enrollment/diarization model, calibration corpus, FAR/FRR and overlap tests |
 | Streaming ASR revisions | Not implemented in cascade | Revision protocol and adapter, stability/rollback tests |
 | Learned semantic endpointing | Not implemented | Transcript-aware/dedicated model and labeled endpoint corpus |
-| Retrieval and tool execution | Not implemented | Typed tool protocol, authorization, sandboxing, cancellation and audit tests |
+| Retrieval and tool execution | Task lifecycle scaffold shipped (26.7.14.1); tool-call UI ready; typed tool protocol, authorization, sandboxing, cancellation and audit tests still needed | Typed tool protocol, authorization, sandboxing, cancellation and audit tests |
 | Streaming safety intervention | Not implemented | Incremental classifier/policy, output holdback/interruption, red-team evaluation |
 | GPU scheduler | Lease primitive only | GPU inventory, memory admission, fair queue, preemption/OOM/failover tests |
 | Production control plane | Not implemented | Durable desired state, reconciliation, authn/authz, tenancy, health and rollouts |
