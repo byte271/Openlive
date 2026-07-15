@@ -6,6 +6,10 @@ use tokio::{sync::mpsc, task::JoinHandle};
 pub(crate) enum ServerMessage {
     Control(EventEnvelope),
     Media(MediaPacket),
+    /// Pre-serialized JSON text. Used by the resume replay path so the
+    /// original `event_id` and sequence number are preserved byte-for-byte
+    /// (which is what makes client-side dedup reliable).
+    RawText(String),
 }
 
 pub(crate) struct WebSocketTransport {
@@ -28,6 +32,7 @@ impl WebSocketTransport {
                         Message::Text(json)
                     }
                     ServerMessage::Media(packet) => Message::Binary(packet.encode()),
+                    ServerMessage::RawText(json) => Message::Text(json),
                 };
                 if socket_sender.send(message).await.is_err() {
                     break;

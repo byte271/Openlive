@@ -4,10 +4,15 @@ Openlive is an open, model-neutral runtime for continuous voice agents. It separ
 
 ## Current status
 
-**Version 1.0 is the first stable Openlive protocol/runtime release. It is not a GPT-Live-equivalent model.**
+**Version 1.3 is the gpt-live parity release. It closes the most visible UX gaps between Openlive 1.2 and ChatGPT Advanced Voice Mode / GPT-Live, with the explicit goal of making Openlive a credible open-source clone of the gpt-live voice surface — original visual identity preserved, proprietary assets avoided, and the model-neutral runtime intact. It is not a GPT-Live-equivalent model. The full parity matrix lives in [`docs/gpt-live-parity.md`](docs/gpt-live-parity.md); the underlying research is in [`docs/gpt-live-benchmark.md`](docs/gpt-live-benchmark.md).**
 
-Implemented:
+Implemented in 1.2:
 
+- Original full-screen voice presence with listening, thinking, speaking, interruption, reconnecting, mute, and error states.
+- One-action conversation startup, reversible microphone pause, explicit end, and hidden-on-demand diagnostics.
+- Signal-driven local animation that reacts before server telemetry arrives.
+- Bounded realtime reconnect with stale playback cancellation while microphone capture remains available.
+- First-class microphone permission and missing-device recovery in the primary conversation surface.
 - Rust workspace with unsafe code forbidden and strict Clippy.
 - Dedicated audio/DSP crate and separated gateway configuration, session, transport, and state modules.
 - Separated cascade streaming primitives and native realtime wire protocol mapping.
@@ -47,6 +52,34 @@ Still missing:
 - Retrieval, tools, streaming safety, GPU scheduling, and production control plane.
 - Measured parity on Full-Duplex-Bench, VoiceBench, and network impairment suites.
 
+### What's new in 1.3 (gpt-live parity release)
+
+- **Inline layout toggle** — focused (orb-centered) vs inline (transcript beside orb) layouts, mirroring AVM's late-2025 redesign that moved voice inline with the chat thread.
+- **Refined orb palette** — deeper saturated blues for IDLE/SPEAKING to evoke the AVM signature mood while keeping Openlive's original violet and cyan accents. All colors are original.
+- **Backchannel badge** — a subtle "mhmm" cue near the orb flashes when the provider emits a backchannel event, mirroring GPT-Live's native backchanneling.
+- **Camera & screen-share affordances** — new dock buttons surface the camera and screen-share modalities that AVM exposes. v1.3 ships the UI; the streams wire up in v1.4 alongside WebRTC.
+- **Quota pill** — a daily/session cap indicator in the topbar with graceful fallback messaging, matching AVM's daily-limit behavior. Operators configure the cap in the settings sheet.
+- **Custom instructions inline panel** — AVM-style "Speaking style" panel with four axes (Pace, Detail, Complexity, Tone). Changes apply to the next turn instantly. A `!` badge on the dock button indicates when any axis is non-auto.
+- **Tool-call cards in transcript** — function-calling invocations render as cards with the tool glyph, name, streaming arguments preview, status, and result text. Builtin tool descriptors cover weather, stock, maps, web_search, calculator, calendar, email, and code_interpreter.
+- **Rich visual cards** — structured cards for weather, stock, sports, maps, web_search, code, translation, and a generic fallback. Cards render inline in the transcript drawer.
+- **New keyboard shortcuts**: `I` (instructions), `L` (layout toggle), `C` (camera), `Shift+C` (screen share). All v1.2 shortcuts preserved.
+- **localStorage** key bumped to `openlive.v1.3.settings` to accommodate new fields cleanly. New persisted fields: `complexityOverride`, `toneOverride`, `layout`.
+
+### What's new in 1.2
+
+- A redesigned voice surface keeps the original procedural orb as the centerpiece and adds a live dual transcript (user + assistant) that scrolls beside it, with role-differentiated bubbles and a system channel for lifecycle lines.
+- An in-app voice picker sourced from the provider manifest, with an offline roster fallback. Voices are shown in the AVM pattern: name plus one-line personality descriptor.
+- Five conversation mode presets — Open conversation, Brainstorm, Interview, Language tutor, Stand-up — that adjust pause tolerance, interruption sensitivity, and the system instruction prefix.
+- Per-call instruction overrides (speed and detail) map to per-`response.create` `instructions` for native-realtime providers and to a system-prompt prefix for cascade and mock providers.
+- Optional push-to-talk entry mode (hold space, hold the primary button, or use a dedicated PTT affordance). AVM does not offer this; Openlive does.
+- A live latency pill in the voice surface, sourced from rolling p50 generation latency. Operator-toggled, hidden by default for end-user deployments.
+- The voice orb is rebuilt around a multi-layer renderer: outer aura, energy ribbons, procedural body with barge-in jitter, inner core glow, and a barge-in ripple that radiates when the local duck fires.
+- Three themes (Aurora, Graphite, Signal) and a motion-intensity slider that honors `prefers-reduced-motion`.
+- A new connection-telemetry module computes rolling p50/p95 latency, jitter, and best-effort loss ratio. It drives the latency pill and the diagnostics Quality meter.
+- A first-run onboarding overlay explains Openlive's privacy posture and the keyboard shortcut cheat sheet.
+- Settings persist across sessions via namespaced `localStorage` keys.
+- Junk-code cleanup: removed the unused `--accent-warm` CSS variable, the never-called `AudioSession.isMicrophoneActive()`, the duplicated clamp helpers, and the duplicated SVG icon path. See [`docs/v1.2-cleanup-audit.md`](docs/v1.2-cleanup-audit.md).
+
 The default mock deliberately emits a tone. The optional real endpoint is a conventional cascade and cannot reproduce a model trained natively for full-duplex speech.
 
 The native realtime adapter preserves a continuous speech session and maps audio deltas, transcript deltas, cancellation, and provider state into Openlive. It requires a compatible external endpoint and has not been certified as GPT-Live-equivalent.
@@ -73,7 +106,7 @@ The playback worklet publishes sample-timed rendered reference frames. A bounded
 cargo run -p openlive-gateway
 ```
 
-Open `http://127.0.0.1:8787`, connect, and start the microphone. Speak, pause, then speak over the generated tone. The browser should duck output immediately; Chronos then resumes after brief overlap or cancels after confirmed barge-in.
+Open `http://127.0.0.1:8787` and select **Start** (or press `Space` in push-to-talk mode). Speak, pause, then speak over the generated tone. The browser should duck output immediately; Chronos then resumes after brief overlap or cancels after confirmed barge-in. Toggle the transcript with `T`, the diagnostics with `D`, voice picker with `V`, conversation mode with `M`, custom instructions with `I`, layout with `L`, camera with `C`, and screen share with `Shift+C`.
 
 ## Run an OpenAI-compatible speech cascade
 
@@ -146,13 +179,15 @@ node --test apps/openlive-gateway/web/tests/*.test.js
 ## Workspace
 
 ```text
-apps/openlive-gateway/       Gateway, WebSocket transport, and modular browser console
+apps/openlive-gateway/       Gateway, WebSocket transport, and immersive browser voice client
+  web/                       Voice surface: orb, transcript, voice picker, mode picker,
+                             settings sheet, diagnostics, onboarding, keyboard shortcuts
 crates/openlive-audio/       Acoustic analysis and endpointing
 crates/openlive-protocol/    Control events, binary media codec, and provider manifests
 crates/openlive-provider/    Bidirectional mock, cascade, and realtime adapters
 crates/openlive-runtime/     Chronos, answer leases, and deterministic replay
 fixtures/                    Versioned event recordings
-docs/                        Architecture and adapter guidance
+docs/                        Architecture, adapter guidance, release notes, gpt-live benchmark
 ```
 
 ## Protocol principles
@@ -169,11 +204,11 @@ docs/                        Architecture and adapter guidance
 1. WebRTC/Opus with FEC, PLC, and congestion-aware media transport.
 2. Streaming semantic endpointing and transcript revisions.
 3. A Moshi, PersonaPlex, or equivalent native duplex worker.
-4. Streaming safety intervention, retrieval, and tools.
+4. Streaming safety intervention, retrieval, tools, and remote MCP server support.
 5. Cancellation-deadline and 30-minute provider certification.
 6. Full-Duplex-Bench, VoiceBench, and reproducible network-impairment reports.
 
-See [`docs/architecture.md`](docs/architecture.md) and [`docs/provider-adapters.md`](docs/provider-adapters.md).
+See [`docs/production-readiness.md`](docs/production-readiness.md) for the verified feature truth table and mandatory release gates. Additional references: [`docs/release-1.3.md`](docs/release-1.3.md), [`docs/gpt-live-parity.md`](docs/gpt-live-parity.md), [`docs/release-1.2.md`](docs/release-1.2.md), [`docs/gpt-live-benchmark.md`](docs/gpt-live-benchmark.md), [`docs/v1.2-cleanup-audit.md`](docs/v1.2-cleanup-audit.md), [`docs/release-1.1.md`](docs/release-1.1.md), [`docs/architecture.md`](docs/architecture.md), and [`docs/provider-adapters.md`](docs/provider-adapters.md).
 
 ## License
 

@@ -45,8 +45,10 @@ export function decodeOutputAudio(packet) {
     mediaTimeUs: Number(view.getBigUint64(16, true)),
     generationId: uuidFromBytes(bytes.subarray(24, 40)),
     sampleRate: view.getUint32(40, true),
-    frameDurationMs: view.getUint16(44, true),
-    channels: view.getUint8(46),
+    // frameDurationMs and channels are present in the binary header at
+    // offsets 44 and 46 but not surfaced on the decoded object — no
+    // consumer reads them. They remain on the wire for protocol 1.0
+    // compatibility and may be re-surfaced in a future revision.
     pcm: new Int16Array(packet.slice(HEADER_BYTES)),
   };
 }

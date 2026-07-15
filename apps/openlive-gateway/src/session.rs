@@ -4,10 +4,12 @@ use axum::extract::ws::{Message, WebSocket};
 use futures_util::StreamExt;
 use openlive_audio::{AcousticFrontend, EndpointingTracker};
 use openlive_protocol::{
-    ErrorEvent, EventEnvelope, InteractionAction, LatencyMark, LatencyPhase, MediaKind,
-    MediaPacket, MediaTransport, Observation, OutputAudioCancel, OutputAudioPlayed, PcmAudioFrame,
+    CapabilityOffer, CapabilitySelected, ErrorEvent, EventEnvelope, EvidenceKind, EvidenceLink,
+    EvidenceLinkType, InteractionAction, LatencyMark, LatencyPhase, MediaKind, MediaPacket,
+    MediaTransport, Modality, Observation, OutputAudioCancel, OutputAudioPlayed, PcmAudioFrame,
     ProviderLifecycleState, ProviderManifest, RealtimeEvent, SessionConfigured, SessionCreated,
-    PROTOCOL_VERSION,
+    SessionResume, TaskCancel, TaskOutcome, TaskRequested, VisualInput, VisualInputMode,
+    VisualInputRejected, PROTOCOL_REVISION, PROTOCOL_VERSION,
 };
 use openlive_provider::{
     ProviderEmission, ProviderInput, ProviderOutput, ProviderSessionRequest, RealtimeProvider,
@@ -19,6 +21,7 @@ use uuid::Uuid;
 
 use crate::session_state::{
     ActiveGeneration, ClientTimeline, LatencyTracker, PlayoutTracker, RepairContext, TelemetryGate,
+    TaskOrchestrator, PendingOutcome,
 };
 use crate::transport::{ServerMessage, WebSocketTransport};
 
@@ -30,6 +33,7 @@ struct SessionCoordinator {
     session_id: Uuid,
     outgoing: mpsc::Sender<ServerMessage>,
     provider_input: mpsc::Sender<ProviderInput>,
+    provider_manifest: ProviderManifest,
     sequence: u64,
     engine: SessionEngine,
     leases: AnswerLeaseManager,
@@ -41,6 +45,8 @@ struct SessionCoordinator {
     client_timeline: ClientTimeline,
     dropped_input_frames: u64,
     telemetry_gate: TelemetryGate,
+    /// Phase 7: owns task lifecycle, evidence links, and resume buffering.
+    task_orchestrator: TaskOrchestrator,
 }
 
 impl SessionCoordinator {
@@ -48,12 +54,14 @@ impl SessionCoordinator {
         session_id: Uuid,
         outgoing: mpsc::Sender<ServerMessage>,
         provider_input: mpsc::Sender<ProviderInput>,
+        provider_manifest: ProviderManifest,
     ) -> Self {
         let profile = openlive_protocol::InteractionProfile::default();
         Self {
             session_id,
             outgoing,
             provider_input,
+            provider_manifest,
             sequence: 0,
             engine: SessionEngine::new(session_id, ChronosConfig::default(), profile),
             leases: AnswerLeaseManager::new(session_id),
@@ -65,6 +73,7 @@ impl SessionCoordinator {
             client_timeline: ClientTimeline::default(),
             dropped_input_frames: 0,
             telemetry_gate: TelemetryGate::default(),
+            task_orchestrator: TaskOrchestrator::new(),
         }
     }
 
@@ -114,6 +123,26 @@ impl SessionCoordinator {
             RealtimeEvent::OutputAudioPlayed(OutputAudioPlayed { last_media_time_us }) => {
                 self.playout.played(last_media_time_us);
             }
+            RealtimeEvent::CapabilityOffer(offer) => {
+                self.select_capabilities(media_time_us, parent_event_id, offer)
+                    .await;
+            }
+            RealtimeEvent::VisualInput(visual) => {
+                self.handle_visual_input(media_time_us, parent_event_id, visual)
+                    .await;
+            }
+            RealtimeEvent::TaskRequested(request) => {
+                self.handle_task_requested(media_time_us, parent_event_id, request)
+                    .await;
+            }
+            RealtimeEvent::TaskCancel(cancel) => {
+                self.handle_task_cancel(media_time_us, parent_event_id, cancel)
+                    .await;
+            }
+            RealtimeEvent::SessionResume(resume) => {
+                self.handle_session_resume(media_time_us, parent_event_id, resume)
+                    .await;
+            }
             RealtimeEvent::Ping => {
                 let event = self
                     .envelope("session", media_time_us, RealtimeEvent::Pong)
@@ -121,6 +150,322 @@ impl SessionCoordinator {
                 self.send(event).await;
             }
             _ => {}
+        }
+    }
+
+    async fn select_capabilities(
+        &mut self,
+        media_time_us: u64,
+        parent_event_id: Uuid,
+        offer: CapabilityOffer,
+    ) {
+        let selected_input = offer
+            .requested_modalities
+            .input
+            .into_iter()
+            .filter(|modality| self.provider_manifest.modalities.input.contains(modality))
+            .collect::<Vec<_>>();
+        let selected_output = offer
+            .requested_modalities
+            .output
+            .into_iter()
+            .filter(|modality| self.provider_manifest.modalities.output.contains(modality))
+            .collect::<Vec<_>>();
+        let provider_has_visual = selected_input
+            .iter()
+            .any(|modality| matches!(modality, Modality::Image | Modality::Screen));
+        let visual_mode = if provider_has_visual {
+            VisualInputMode::ExplicitSnapshot
+        } else {
+            VisualInputMode::Unsupported
+        };
+        let mut warnings = Vec::new();
+        if offer.protocol_revision > PROTOCOL_REVISION {
+            warnings.push(format!(
+                "client protocol revision {} is newer than gateway revision {}",
+                offer.protocol_revision, PROTOCOL_REVISION
+            ));
+        }
+        if offer.visual_input_policy.is_some() && !provider_has_visual {
+            warnings.push("the selected provider does not accept visual input".to_owned());
+        }
+        // Phase 7: resume is now supported by the gateway (buffered outcomes
+        // with `event_id` dedup). We mirror the client's request back so the
+        // UI knows whether to enable the "Resume" affordance after a drop.
+        let resume_supported = offer.supports_resume;
+        let selected = CapabilitySelected {
+            protocol_revision: PROTOCOL_REVISION,
+            provider_manifest: self.provider_manifest.clone(),
+            selected_input,
+            selected_output,
+            visual_mode,
+            resume_supported,
+            warnings,
+        };
+        let event = self
+            .envelope(
+                "capability",
+                media_time_us,
+                RealtimeEvent::CapabilitySelected(selected),
+            )
+            .with_parent(parent_event_id);
+        self.send(event).await;
+    }
+
+    async fn handle_visual_input(
+        &mut self,
+        media_time_us: u64,
+        parent_event_id: Uuid,
+        visual: VisualInput,
+    ) {
+        let (code, message, retryable) =
+            if visual.byte_length > 393_216 || visual.width > 1280 || visual.height > 720 {
+                (
+                    "visual_input_limit_exceeded",
+                    "visual input must be at most 1280×720 and 384 KB",
+                    true,
+                )
+            } else if !visual.mime_type.starts_with("image/") {
+                (
+                    "visual_input_mime_unsupported",
+                    "visual input must use an image MIME type",
+                    false,
+                )
+            } else {
+                (
+                "visual_input_unsupported",
+                "the selected provider has no visual-input transport; the frame was not retained",
+                false,
+            )
+            };
+        let rejection = RealtimeEvent::VisualInputRejected(VisualInputRejected {
+            capture_id: visual.capture_id,
+            code: code.to_owned(),
+            message: message.to_owned(),
+            retryable,
+        });
+        let event = self
+            .envelope("visual", media_time_us, rejection)
+            .with_parent(parent_event_id);
+        self.send(event).await;
+    }
+
+    /// Validate a `TaskRequested`, register it with the orchestrator, and
+    /// emit a `TaskAcknowledged` before any provider work begins. The
+    /// acknowledgement is buffered for resume replay so a client that
+    /// disconnects immediately after sending a task still sees the receipt
+    /// when it reconnects.
+    ///
+    /// If the client supplied `generation_id`, the task is bound to that
+    /// generation. Otherwise the task stays unbound and will be bound to
+    /// the next generation that starts (see `start_response`).
+    async fn handle_task_requested(
+        &mut self,
+        media_time_us: u64,
+        parent_event_id: Uuid,
+        request: TaskRequested,
+    ) {
+        let now_ms = media_time_us / 1_000;
+        let provider_id = self.provider_manifest.id.as_str();
+        let Some(acknowledgement) = self
+            .task_orchestrator
+            .admit(request, Some(provider_id), now_ms)
+        else
+        {
+            self.send_error(
+                media_time_us,
+                "task_rejected",
+                "task could not be admitted (empty intent or duplicate id)".to_owned(),
+            )
+            .await;
+            return;
+        };
+        let event = self
+            .envelope(
+                "tasks",
+                media_time_us,
+                RealtimeEvent::TaskAcknowledged(acknowledgement),
+            )
+            .with_parent(parent_event_id);
+        self.send_and_buffer(event).await;
+    }
+
+    /// Cancel a task. If the task is active, emit a `TaskOutcome` with
+    /// `result = Cancelled`. If the task is already resolved or unknown,
+    /// the cancel request is silently ignored (the ledger is append-only).
+    async fn handle_task_cancel(
+        &mut self,
+        media_time_us: u64,
+        parent_event_id: Uuid,
+        cancel: TaskCancel,
+    ) {
+        let Some(pending) = self
+            .task_orchestrator
+            .cancel_task(cancel.task_id, cancel.reason.as_deref())
+        else {
+            // Unknown or already resolved — not an error, just a no-op.
+            return;
+        };
+        let outcome = TaskOutcome {
+            task_id: pending.task_id,
+            result: pending.result,
+            summary: pending.summary,
+            evidence_ids: pending.evidence_ids,
+            error_code: pending.error_code,
+            error_detail: pending.error_detail,
+        };
+        let event = self
+            .envelope("tasks", media_time_us, RealtimeEvent::TaskOutcome(outcome))
+            .with_parent(parent_event_id);
+        self.send_and_buffer(event).await;
+    }
+
+    /// Replay buffered outcomes whose sequence is strictly greater than
+    /// `last_sequence_seen`. The orchestrator deduplicates by `event_id`
+    /// so resume never produces duplicate evidence in the client's ledger.
+    async fn handle_session_resume(
+        &mut self,
+        media_time_us: u64,
+        parent_event_id: Uuid,
+        resume: SessionResume,
+    ) {
+        if resume.session_id != self.session_id {
+            self.send_error(
+                media_time_us,
+                "session_mismatch",
+                "resume session_id does not match this connection".to_owned(),
+            )
+            .await;
+            return;
+        }
+        let replay = self
+            .task_orchestrator
+            .replay_after(resume.last_sequence_seen);
+        for envelope_json in replay {
+            if self
+                .outgoing
+                .send(ServerMessage::RawText(envelope_json))
+                .await
+                .is_err()
+            {
+                warn!("session writer closed during resume replay");
+                return;
+            }
+        }
+        let event = self
+            .envelope("session", media_time_us, RealtimeEvent::Pong)
+            .with_parent(parent_event_id);
+        self.send(event).await;
+    }
+
+    /// Emit a batch of `PendingOutcome`s produced by the orchestrator
+    /// (from `expire_deadlines` or `complete_tasks_for_generation`).
+    /// Each outcome is sent on the wire AND buffered for resume replay.
+    /// The orchestrator has already removed the task from its active set,
+    /// so we just need to serialize and emit.
+    async fn emit_pending_outcomes(&mut self, media_time_us: u64, outcomes: Vec<PendingOutcome>) {
+        for pending in outcomes {
+            let outcome = TaskOutcome {
+                task_id: pending.task_id,
+                result: pending.result,
+                summary: pending.summary,
+                evidence_ids: pending.evidence_ids,
+                error_code: pending.error_code,
+                error_detail: pending.error_detail,
+            };
+            let event = self
+                .envelope("tasks", media_time_us, RealtimeEvent::TaskOutcome(outcome))
+                .with_parent(pending.task_id);
+            self.send_and_buffer(event).await;
+        }
+    }
+
+    /// Emit a bidirectional `EvidenceLink` and record it with the
+    /// orchestrator. The link is buffered for resume replay so the client's
+    /// evidence matrix survives disconnects. Duplicate links are dropped
+    /// (the orchestrator deduplicates by `(source, target, link_type)`).
+    async fn emit_evidence_link(&mut self, media_time_us: u64, link: EvidenceLink) {
+        let inserted = self.task_orchestrator.link_evidence(&link);
+        if !inserted {
+            return;
+        }
+        let event = self
+            .envelope("evidence", media_time_us, RealtimeEvent::EvidenceLink(link))
+            .with_parent(self.session_id);
+        self.send_and_buffer(event).await;
+    }
+
+    /// Classify a provider event into the appropriate `EvidenceKind`.
+    /// This is the real classification logic — no more "everything is
+    /// Transcript". The mapping is:
+    ///   - `OutputTextDelta` / `OutputTextFinal` → `Transcript`
+    ///   - `ProviderState` (Generating/Complete) → `Timing`
+    ///   - `LatencyMark` → `Timing`
+    ///   - `VisualInputAccepted` → `Visual`
+    ///   - Everything else → `None` (not evidence-worthy)
+    fn classify_evidence(event: &RealtimeEvent) -> Option<EvidenceKind> {
+        match event {
+            RealtimeEvent::OutputTextDelta(_) | RealtimeEvent::OutputTextFinal(_) => {
+                Some(EvidenceKind::Transcript)
+            }
+            RealtimeEvent::LatencyMark(_) => Some(EvidenceKind::Timing),
+            RealtimeEvent::VisualInputAccepted(_) => Some(EvidenceKind::Visual),
+            // ProviderState transitions are timing evidence (they mark
+            // generation start/complete). We only classify the interesting
+            // transitions, not every state change.
+            RealtimeEvent::ProviderState(state)
+                if matches!(
+                    state.state,
+                    ProviderLifecycleState::Generating | ProviderLifecycleState::Complete
+                ) =>
+            {
+                Some(EvidenceKind::Timing)
+            }
+            _ => None,
+        }
+    }
+
+    /// Attach a provider event id as evidence to every task bound to
+    /// `generation_id`. Tasks bound to other generations (or unbound)
+    /// are NOT given this evidence — this is the correctness fix that
+    /// prevents evidence from one generation polluting tasks admitted
+    /// for a different turn.
+    ///
+    /// The evidence kind is classified from the event type via
+    /// `classify_evidence`. Events that don't match any kind are skipped.
+    async fn attach_evidence_to_generation(
+        &mut self,
+        generation_id: Uuid,
+        evidence_id: Uuid,
+        event: &RealtimeEvent,
+        media_time_us: u64,
+    ) {
+        let Some(kind) = Self::classify_evidence(event) else {
+            return;
+        };
+        // Only attach to tasks bound to THIS generation. This is the
+        // correctness fix — evidence from generation N must not pollute
+        // tasks admitted for generation N+1.
+        let task_ids = self
+            .task_orchestrator
+            .task_ids_for_generation(generation_id);
+        for task_id in task_ids {
+            let attached = self
+                .task_orchestrator
+                .attach_evidence(task_id, kind, evidence_id);
+            if !attached {
+                continue;
+            }
+            self.emit_evidence_link(
+                media_time_us,
+                EvidenceLink {
+                    source_id: task_id,
+                    target_id: evidence_id,
+                    link_type: EvidenceLinkType::TaskProof,
+                    confidence: 1.0,
+                },
+            )
+            .await;
         }
     }
 
@@ -282,6 +627,11 @@ impl SessionCoordinator {
             .map(|lease| lease.conversation_version)
             .unwrap_or_default();
         self.engine.mark_response_started(generation_id);
+        // Bind every pending (unbound) task to this generation. Tasks
+        // admitted between turns now get attached to the upcoming
+        // generation so they complete when it finishes.
+        self.task_orchestrator
+            .bind_pending_to_generation(generation_id);
         self.active_generation = Some(ActiveGeneration {
             id: generation_id,
             base_media_time_us: media_time_us,
@@ -384,17 +734,36 @@ impl SessionCoordinator {
         for mark in latency_marks {
             self.send_latency(media_time_us, generation_id, mark).await;
         }
+        // Enforce task deadlines on every provider emission. This
+        // piggybacks on existing activity so we don't need a separate
+        // timer thread. Expired tasks emit Failure outcomes immediately.
+        let now_ms = media_time_us / 1_000;
+        let expired = self.task_orchestrator.expire_deadlines(now_ms);
+        if !expired.is_empty() {
+            self.emit_pending_outcomes(media_time_us, expired).await;
+        }
         let is_complete = matches!(
             &output,
             ProviderOutput::Event(RealtimeEvent::ProviderState(state))
                 if state.state == ProviderLifecycleState::Complete
         );
+        let mut emitted_event_id: Option<Uuid> = None;
+        let mut emitted_event_ref: Option<RealtimeEvent> = None;
         match output {
             ProviderOutput::Event(event) => {
-                let event = self
-                    .envelope(provider_stream_id(&event), media_time_us, event)
-                    .with_generation(generation_id);
-                self.send(event).await;
+                let event_id = Uuid::new_v4();
+                let envelope = EventEnvelope::new_with_id(
+                    event_id,
+                    self.session_id,
+                    provider_stream_id(&event),
+                    next_sequence(&mut self.sequence),
+                    media_time_us,
+                    event.clone(),
+                )
+                .with_generation(generation_id);
+                emitted_event_id = Some(event_id);
+                emitted_event_ref = Some(event);
+                self.send(envelope).await;
             }
             ProviderOutput::Audio(audio) => {
                 self.playout.sent(media_time_us);
@@ -408,9 +777,32 @@ impl SessionCoordinator {
                 self.send_media(packet);
             }
         }
+        // Attach the emitted event as evidence to every task bound to
+        // this generation. The evidence kind is classified from the event
+        // type — transcript events become Transcript evidence, latency
+        // marks become Timing evidence, etc. Tasks bound to other
+        // generations are NOT given this evidence.
+        if let (Some(event_id), Some(event)) = (emitted_event_id, emitted_event_ref.as_ref()) {
+            self.attach_evidence_to_generation(
+                generation_id,
+                event_id,
+                event,
+                media_time_us,
+            )
+            .await;
+        }
         if is_complete {
             self.engine.mark_response_complete(generation_id);
             self.active_generation = None;
+            // Complete only the tasks bound to this generation. Tasks
+            // admitted for a future turn (or bound to a different
+            // generation) remain active. This is the correctness fix.
+            let outcomes = self
+                .task_orchestrator
+                .complete_tasks_for_generation(generation_id);
+            if !outcomes.is_empty() {
+                self.emit_pending_outcomes(media_time_us, outcomes).await;
+            }
         }
     }
 
@@ -534,6 +926,30 @@ impl SessionCoordinator {
         }
     }
 
+    /// Phase 7: send an outbound event AND buffer its serialized form for
+    /// resume replay. The buffer deduplicates by `event_id`, so re-sending
+    /// the same event is safe. Buffering happens before the wire write so
+    /// a transport error does not corrupt the resume ledger.
+    async fn send_and_buffer(&mut self, event: EventEnvelope) {
+        let sequence = event.sequence;
+        let event_id = event.event_id;
+        let Ok(envelope_json) = serde_json::to_string(&event) else {
+            warn!("failed to serialize outbound envelope for buffering");
+            self.send(event).await;
+            return;
+        };
+        self.task_orchestrator
+            .buffer_outbound(sequence, event_id, envelope_json.clone());
+        if self
+            .outgoing
+            .send(ServerMessage::RawText(envelope_json))
+            .await
+            .is_err()
+        {
+            warn!("session writer closed");
+        }
+    }
+
     fn send_media(&self, packet: MediaPacket) {
         match self.outgoing.try_send(ServerMessage::Media(packet)) {
             Ok(()) => {}
@@ -576,9 +992,14 @@ pub(crate) async fn run(socket: WebSocket, provider: Arc<dyn RealtimeProvider>) 
         }
     });
 
-    let mut coordinator =
-        SessionCoordinator::new(session_id, outgoing_sender.clone(), provider_input);
-    coordinator.announce(provider.manifest()).await;
+    let provider_manifest = provider.manifest();
+    let mut coordinator = SessionCoordinator::new(
+        session_id,
+        outgoing_sender.clone(),
+        provider_input,
+        provider_manifest.clone(),
+    );
+    coordinator.announce(provider_manifest).await;
     loop {
         tokio::select! {
             incoming = transport.incoming.next() => {
@@ -625,8 +1046,15 @@ fn decision_action(event: &EventEnvelope) -> Option<InteractionAction> {
 
 fn client_stream_id(event: &RealtimeEvent) -> Option<&'static str> {
     match event {
-        RealtimeEvent::SessionConfigured(_) | RealtimeEvent::Ping => Some("session"),
+        RealtimeEvent::SessionConfigured(_)
+        | RealtimeEvent::Ping
+        | RealtimeEvent::SessionResume(_) => Some("session"),
+        RealtimeEvent::CapabilityOffer(_) => Some("capability"),
+        RealtimeEvent::VisualInput(_) => Some("visual"),
         RealtimeEvent::OutputAudioPlayed(_) => Some("assistant_playout"),
+        // Client-owned task events: request, cancel, and resume all flow
+        // through the validated client timeline.
+        RealtimeEvent::TaskRequested(_) | RealtimeEvent::TaskCancel(_) => Some("tasks"),
         _ => None,
     }
 }
@@ -638,6 +1066,12 @@ fn provider_stream_id(event: &RealtimeEvent) -> &'static str {
         RealtimeEvent::TaskCreated(_) | RealtimeEvent::TaskResult(_) => "cognition",
         RealtimeEvent::LatencyMark(_) => "telemetry",
         RealtimeEvent::EndpointingPrediction(_) => "endpointing",
+        RealtimeEvent::CapabilitySelected(_) => "capability",
+        RealtimeEvent::VisualInputAccepted(_) | RealtimeEvent::VisualInputRejected(_) => "visual",
+        // Phase 7: gateway-emitted task lifecycle and evidence events.
+        RealtimeEvent::TaskAcknowledged(_)
+        | RealtimeEvent::TaskOutcome(_) => "tasks",
+        RealtimeEvent::EvidenceLink(_) => "evidence",
         _ => "provider",
     }
 }

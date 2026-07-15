@@ -1,3 +1,15 @@
+/**
+ * Clamp a number to [0, 1]. NaN becomes 0; +Infinity becomes 1;
+ * -Infinity becomes 0. All other values are clamped with Math.max/Math.min.
+ *
+ * @param {number} value
+ * @returns {number}
+ */
+export function clamp01(value) {
+  if (Number.isNaN(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
 export function resample(input, inputRate, outputRate) {
   if (inputRate === outputRate) return input;
   const outputLength = Math.max(

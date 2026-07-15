@@ -6,7 +6,30 @@ import {
   rms,
 } from "./audio-utils.js";
 
+/**
+ * Openlive 1.2 — AudioSession
+ *
+ * Owns the AudioContext, the microphone capture worklet, the playback
+ * worklet, and the output gain node. Bridges binary PCM frames between
+ * the WebSocket and the worklets. Local-first interruption (the reversible
+ * duck before any server round trip) lives here.
+ *
+ * The class is intentionally framework-agnostic: app.js wires it to the
+ * WebSocket via the callbacks passed to the constructor.
+ */
 export class AudioSession {
+  /**
+   * @param {Object} callbacks
+   * @param {(frame: {pcm: Int16Array, speechProbability: number, outputLevel: number, echoProbability: number}) => void} [callbacks.onInputFrame]
+   * @param {(speechProbability: number, echoProbability: number) => void} [callbacks.onInputActivity]
+   * @param {(message: {generationId: string, mediaEndUs: number}) => void} [callbacks.onPlayed]
+   * @param {(kind: string, detail: string) => void} [callbacks.onTimeline]
+   * @param {(queuedMs: number, targetMs: number) => void} [callbacks.onBuffer]
+   * @param {(value: number) => void} [callbacks.onGain]
+   * @param {(level: number) => void} [callbacks.onOutputLevel]
+   * @param {() => void} [callbacks.onInterruption]
+   * @param {() => void} [callbacks.onPlaybackIdle]
+   */
   constructor(callbacks) {
     this.callbacks = callbacks;
     this.inputSampleRate = 16000;
@@ -19,19 +42,25 @@ export class AudioSession {
     this.outputGainConnected = false;
   }
 
+  /**
+   * @param {number} sampleRate
+   */
   setInputSampleRate(sampleRate) {
     this.inputSampleRate = sampleRate;
   }
 
-  isMicrophoneActive() {
-    return Boolean(this.microphoneStream);
-  }
-
+  /**
+   * Start the microphone capture worklet. Resolves with the AudioContext
+   * sample rate so the gateway can be told what to expect.
+   *
+   * @returns {Promise<number>}
+   */
   async startMicrophone() {
     await this.ensureContext();
-    await this.audioContext.audioWorklet.addModule(
+    this.captureModulePromise ??= this.audioContext.audioWorklet.addModule(
       "/audio-capture-worklet.js",
     );
+    await this.captureModulePromise;
     this.microphoneStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
@@ -43,6 +72,7 @@ export class AudioSession {
     const source = this.audioContext.createMediaStreamSource(
       this.microphoneStream,
     );
+    this.captureSource = source;
     this.captureNode = new AudioWorkletNode(
       this.audioContext,
       "openlive-capture",
@@ -54,11 +84,49 @@ export class AudioSession {
     return this.audioContext.sampleRate;
   }
 
+  /**
+   * Stop microphone capture and disconnect the worklet. The AudioContext
+   * itself stays alive so the playback worklet can continue running.
+   */
   stopMicrophone() {
     this.microphoneStream?.getTracks().forEach((track) => track.stop());
+    this.captureSource?.disconnect();
     this.captureNode?.disconnect();
     this.microphoneStream = undefined;
+    this.captureSource = undefined;
     this.captureNode = undefined;
+  }
+
+  /**
+   * Hard-reset the session: cancel all in-flight generations, restore
+   * the output gain, and clear local duck state. Used when the
+   * conversation ends or before a reconnect.
+   */
+  reset() {
+    this.cancelAllPlayback(25);
+    this.playbackOutputLevel = 0;
+    this.locallyDucked = false;
+    this.hardYielded = false;
+    clearTimeout(this.localResumeTimer);
+    this.setOutputGain(1, 0.03);
+    this.callbacks.onOutputLevel?.(0);
+  }
+
+  /**
+   * Cancel every queued playback frame. Centralizes the cancel-message
+   * posting that was previously duplicated between reset() and cancel().
+   *
+   * @param {number} fadeMs
+   */
+  cancelAllPlayback(fadeMs) {
+    for (const generationId of this.playbackFrameCounts.keys()) {
+      this.playbackNode?.port.postMessage({
+        type: "cancel",
+        generationId,
+        fadeMs,
+      });
+    }
+    this.playbackFrameCounts.clear();
   }
 
   async enqueue(packet) {
@@ -173,6 +241,10 @@ export class AudioSession {
       : 0;
     const targetSpeechProbability =
       speechProbability * (1 - echoProbability);
+    this.callbacks.onInputActivity?.(
+      speechProbability,
+      echoProbability,
+    );
     this.applyLocalInterruption(targetSpeechProbability);
     const resampled = resample(
       samples,
@@ -212,6 +284,9 @@ export class AudioSession {
     }
     if (message.type === "canceled" || message.type === "idle") {
       this.playbackFrameCounts.delete(message.generationId);
+      this.playbackOutputLevel = 0;
+      this.callbacks.onOutputLevel?.(0);
+      if (message.type === "idle") this.callbacks.onPlaybackIdle?.();
       return;
     }
     if (message.type === "underflow") {
@@ -227,6 +302,7 @@ export class AudioSession {
     }
     if (message.type === "output_level") {
       this.playbackOutputLevel = message.rms;
+      this.callbacks.onOutputLevel?.(message.rms);
     }
   }
 
@@ -249,6 +325,7 @@ export class AudioSession {
         "local_duck",
         "Playback attenuated before server confirmation",
       );
+      this.callbacks.onInterruption?.();
       return;
     }
     if (probability <= 0.28 && this.locallyDucked && !this.hardYielded) {

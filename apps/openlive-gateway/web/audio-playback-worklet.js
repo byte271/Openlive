@@ -37,6 +37,20 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
     }
     if (message.type === "complete") {
       this.completeGenerations.add(message.generationId);
+      const generationQueued = this.queue.some(
+        (frame) => frame.generationId === message.generationId,
+      );
+      if (
+        !generationQueued &&
+        !this.current &&
+        this.lastGenerationId === message.generationId
+      ) {
+        this.port.postMessage({
+          type: "idle",
+          generationId: message.generationId,
+        });
+        this.completeGenerations.delete(message.generationId);
+      }
       return;
     }
     if (message.type === "cancel") {

@@ -807,14 +807,14 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "openlive-audio"
-version = "1.0.0"
+version = "26.7.14"
 dependencies = [
  "openlive-protocol",
 ]
 
 [[package]]
 name = "openlive-gateway"
-version = "1.0.0"
+version = "26.7.14"
 dependencies = [
  "axum",
  "clap",
@@ -825,6 +825,7 @@ dependencies = [
  "openlive-runtime",
  "serde_json",
  "tokio",
+ "tokio-tungstenite 0.20.1",
  "tokio-util",
  "tower-http",
  "tracing",
@@ -834,7 +835,7 @@ dependencies = [
 
 [[package]]
 name = "openlive-protocol"
-version = "1.0.0"
+version = "26.7.14"
 dependencies = [
  "serde",
  "serde_json",
@@ -843,7 +844,7 @@ dependencies = [
 
 [[package]]
 name = "openlive-provider"
-version = "1.0.0"
+version = "26.7.14"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -862,7 +863,7 @@ dependencies = [
 
 [[package]]
 name = "openlive-runtime"
-version = "1.0.0"
+version = "26.7.14"
 dependencies = [
  "clap",
  "openlive-protocol",
