@@ -2,6 +2,9 @@
 
 OpenLive is an open, model-neutral runtime for continuous voice agents. It separates deadline-sensitive interaction continuity from slower model cognition and preserves native duplex provider capabilities instead of forcing every model through a text-chat abstraction.
 
+> [!IMPORTANT]
+> **Disclaimer:** This is an independent open-source project. It is **not an official OpenAI project** and has no affiliation with OpenAI.
+
 ## Current status
 
 **Version 26.7.15** (`v26.7.15`) targets a **GPT-Live-comparable** experience: polished live voice UI, open neural speech (Piper), client-side audio intelligence, WebRTC session path, semantic endpointing, **real tools + multi-agent sandbox**, and durable profile/memory — with original visuals and model neutrality intact.
