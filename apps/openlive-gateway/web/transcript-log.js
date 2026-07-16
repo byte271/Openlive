@@ -1,10 +1,9 @@
 /**
- * Openlive 26.7.14.1 — transcript-log.js
+ * Openlive 26.7.15 — transcript-log.js
  *
  * In-memory conversation transcript. Holds user, assistant, and system
- * messages, supports streaming deltas, finalization, and bounded history.
- * Pure data model — no DOM. The ui.js layer renders the log into the
- * transcript drawer.
+ * messages, supports streaming deltas, in-place revisions, finalization,
+ * and bounded history. Pure data model — no DOM.
  *
  * Design notes:
  *   - Each entry has a stable id so the UI can update existing DOM nodes
@@ -12,9 +11,9 @@
  *   - Assistant entries are created "pending" on the first delta and
  *     finalized on `output_text_final`. Pending entries render with a
  *     trailing ellipsis animation.
- *   - The log is bounded (default 200 entries). When the bound is exceeded
- *     the oldest non-streaming entry is dropped. This keeps memory growth
- *     predictable for long sessions.
+ *   - ASR revisions replace text in-place (`reviseText`) and bump
+ *     `revision` so the UI can flash a transition without a new bubble.
+ *   - The log is bounded (default 200 entries).
  */
 
 const MAX_ENTRIES = 200;
@@ -27,6 +26,8 @@ const MAX_ENTRIES = 200;
  * @property {number} createdAt - epoch milliseconds
  * @property {boolean} pending - true while a streaming assistant turn is in flight
  * @property {string | null} generationId - links to the gateway generation id for assistant turns
+ * @property {number} revision - increments on in-place ASR/text revisions
+ * @property {boolean} [revised] - true for one render cycle after reviseText
  */
 
 export class TranscriptLog {
@@ -55,6 +56,8 @@ export class TranscriptLog {
       createdAt: Date.now(),
       pending: false,
       generationId: meta.generationId ?? null,
+      revision: 0,
+      revised: false,
     };
     this.entries.push(entry);
     this.trim();
@@ -99,6 +102,8 @@ export class TranscriptLog {
       createdAt: Date.now(),
       pending: true,
       generationId,
+      revision: 0,
+      revised: false,
     };
     this.entries.push(entry);
     this.trim();
@@ -119,7 +124,49 @@ export class TranscriptLog {
     const entry = this.entries.find((e) => e.id === id);
     if (!entry) return null;
     entry.text += delta;
+    entry.revised = false;
     return entry;
+  }
+
+  /**
+   * Replace the full text of a streaming entry in-place (ASR revision).
+   * Increments `revision` and sets `revised` so the UI can animate.
+   *
+   * @param {string} id
+   * @param {string} text
+   * @returns {TranscriptEntry | null}
+   */
+  reviseText(id, text) {
+    const entry = this.entries.find((e) => e.id === id);
+    if (!entry) return null;
+    if (entry.text === text) return entry;
+    entry.text = text;
+    entry.revision = (entry.revision ?? 0) + 1;
+    entry.revised = true;
+    return entry;
+  }
+
+  /**
+   * Revise the latest pending entry for a role (typically user ASR).
+   *
+   * @param {"user" | "assistant"} role
+   * @param {string} text
+   * @param {string | null} [generationId]
+   * @returns {TranscriptEntry}
+   */
+  reviseLatestPending(role, text, generationId = null) {
+    for (let i = this.entries.length - 1; i >= 0; i -= 1) {
+      const entry = this.entries[i];
+      if (
+        entry.role === role &&
+        entry.pending &&
+        (generationId == null || entry.generationId === generationId)
+      ) {
+        return this.reviseText(entry.id, text) ?? entry;
+      }
+    }
+    const created = this.beginStream(role, generationId ?? `local-${this._nextId}`);
+    return this.reviseText(created.id, text) ?? created;
   }
 
   /**

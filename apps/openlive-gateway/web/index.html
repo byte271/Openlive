@@ -1,170 +1,595 @@
 <!doctype html>
-<html lang="en" data-theme="aurora">
+<html lang="en" data-theme="minimal">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#070b0e" />
-    <meta name="description" content="OpenLive v2 — full-duplex conversation, concurrent delegated work, and transparent evidence." />
-    <title>OpenLive v2 — Signal Desk</title>
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="OpenLive 26.7.15 — smooth full-duplex voice with background agents." />
+    <title>OpenLive</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/styles.css" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12c0-5 2-8 7-8s7 3 7 8-2 8-7 8-7-3-7-8Z' fill='none' stroke='%2369e6df' stroke-width='2'/%3E%3Cpath d='M8 12h8' stroke='%23ff765c' stroke-width='2'/%3E%3C/svg%3E" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='8' fill='%236b8cff'/%3E%3C/svg%3E" />
   </head>
-  <body data-mode="idle" data-layout="focused" data-workspace="live">
-    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <body data-mode="idle" data-layout="focused" data-workspace="live" data-ui="minimal">
+    <!-- Icons use explicit stroke attrs so <use> works (CSS does not pierce use shadow trees). -->
+    <svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true">
       <defs>
-        <symbol id="icon-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M8 14v6" /></symbol>
-        <symbol id="icon-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></symbol>
-        <symbol id="icon-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6" /></symbol>
-        <symbol id="icon-end" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></symbol>
-        <symbol id="icon-transcript" viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9" /></symbol>
-        <symbol id="icon-voice" viewBox="0 0 24 24"><path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4" /></symbol>
-        <symbol id="icon-mode" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16" /></symbol>
-        <symbol id="icon-ptt" viewBox="0 0 24 24"><path d="M12 4a4 4 0 0 0-4 4v4a4 4 0 0 0 8 0V8a4 4 0 0 0-4-4ZM5 12a7 7 0 0 0 14 0M12 19v3" /></symbol>
-        <symbol id="icon-bolt" viewBox="0 0 24 24"><path d="M13 3 5 14h6l-1 7 8-11h-6l1-7Z" /></symbol>
-        <symbol id="icon-camera" viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h2.5l1.5-2h6l1.5 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /><circle cx="12" cy="12.5" r="3.2" /></symbol>
-        <symbol id="icon-screen" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></symbol>
-        <symbol id="icon-instructions" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7" /><circle cx="18" cy="12" r="2.4" /><circle cx="15" cy="18" r="2.4" /></symbol>
-        <symbol id="icon-layout" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M9 9v11" /></symbol>
-        <symbol id="icon-translate" viewBox="0 0 24 24"><path d="M4 6h10M9 6v3M7 9c0 3 2 5 5 5M11 14c0 3 2 5 5 5M14 11l5 6M14 17l5-6" /></symbol>
-        <symbol id="icon-task" viewBox="0 0 24 24"><path d="M6 7h12M6 12h8M6 17h10" /><path d="m17 11 2 2 3-4" /></symbol>
-        <symbol id="icon-proof" viewBox="0 0 24 24"><path d="M5 4h14v16H5z" /><path d="M8 9h8M8 13h6M8 17h4" /></symbol>
-        <symbol id="icon-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6Z" /><path d="m9 12 2 2 4-5" /></symbol>
-        <symbol id="icon-bench" viewBox="0 0 24 24"><path d="M5 19V9M12 19V5M19 19v-7" /></symbol>
-        <symbol id="icon-memory" viewBox="0 0 24 24"><path d="M8 4h8v4h4v8h-4v4H8v-4H4V8h4Z" /><path d="M9 9h6v6H9z" /></symbol>
-        <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
-        <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" /></symbol>
+        <symbol id="icon-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M8 14v6"/></symbol>
+        <symbol id="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+        <symbol id="icon-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6"/></symbol>
+        <symbol id="icon-end" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+        <symbol id="icon-transcript" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 6h14M5 12h14M5 18h9"/></symbol>
+        <symbol id="icon-voice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4"/></symbol>
+        <symbol id="icon-mode" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 4v16M4 12h16"/></symbol>
+        <symbol id="icon-ptt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4a4 4 0 0 0-4 4v4a4 4 0 0 0 8 0V8a4 4 0 0 0-4-4ZM5 12a7 7 0 0 0 14 0M12 19v3"/></symbol>
+        <symbol id="icon-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3 5 14h6l-1 7 8-11h-6l1-7Z"/></symbol>
+        <symbol id="icon-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a2 2 0 0 1 2-2h2.5l1.5-2h6l1.5 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><circle cx="12" cy="12.5" r="3.2"/></symbol>
+        <symbol id="icon-screen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+        <symbol id="icon-instructions" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="12" r="2.4"/><circle cx="15" cy="18" r="2.4"/></symbol>
+        <symbol id="icon-layout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/></symbol>
+        <symbol id="icon-translate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h10M9 6v3M7 9c0 3 2 5 5 5M11 14c0 3 2 5 5 5M14 11l5 6M14 17l5-6"/></symbol>
+        <symbol id="icon-task" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12M6 12h8M6 17h10"/><path d="m17 11 2 2 3-4"/></symbol>
+        <symbol id="icon-proof" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h14v16H5z"/><path d="M8 9h8M8 13h6M8 17h4"/></symbol>
+        <symbol id="icon-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6Z"/><path d="m9 12 2 2 4-5"/></symbol>
+        <symbol id="icon-bench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 19V9M12 19V5M19 19v-7"/></symbol>
+        <symbol id="icon-memory" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 4h8v4h4v8h-4v4H8v-4H4V8h4Z"/><path d="M9 9h6v6H9z"/></symbol>
+        <symbol id="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+        <symbol id="icon-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></symbol>
+        <symbol id="icon-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.5 13.5 15.5 17.5M15.5 6.5 8.5 10.5"/></symbol>
+        <symbol id="icon-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+        <symbol id="icon-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.12a5 5 0 0 0 7.07 7.07L13 19.07"/></symbol>
+        <symbol id="icon-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M11.5 12.5 21 3M17 3h4v4"/></symbol>
+        <symbol id="icon-agent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="12" rx="2"/><path d="M8 20h8M12 16v4M9 10h.01M15 10h.01M9 13h6"/></symbol>
+        <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></symbol>
       </defs>
     </svg>
 
-    <div class="ambient" aria-hidden="true"><div class="ambient-aurora"></div><div class="ambient-grain"></div></div>
+    <!-- First-run setup wizard -->
+    <div id="setupWizard" class="setup-wizard" data-open="true" hidden>
+      <div class="setup-card">
+        <header class="setup-head">
+          <span class="setup-eyebrow">OpenLive 26.7.15</span>
+          <h1>Get ready to talk</h1>
+          <p>Configure voice, model access, and a background agent. You can change these later in Settings.</p>
+        </header>
+        <div class="setup-steps" role="tablist">
+          <button type="button" class="setup-step active" data-step="0">1 · Voice</button>
+          <button type="button" class="setup-step" data-step="1">2 · Model</button>
+          <button type="button" class="setup-step" data-step="2">3 · Agent</button>
+        </div>
+        <div class="setup-panels">
+          <section class="setup-panel active" data-panel="0">
+            <label for="setupDisplayName">Your name <span class="optional">(optional)</span></label>
+            <input id="setupDisplayName" type="text" placeholder="Alex" autocomplete="name" />
+            <label for="setupVoice">Voice profile</label>
+            <select id="setupVoice"></select>
+            <label class="checkbox-row" for="setupStripFillers"><input id="setupStripFillers" type="checkbox" checked /><span>Clean fillers (um, uh, hmm) before agent tasks</span></label>
+            <label class="checkbox-row" for="setupBackchannels"><input id="setupBackchannels" type="checkbox" checked /><span>Natural listener cues (mhmm) during speech</span></label>
+          </section>
+          <section class="setup-panel" data-panel="1" hidden>
+            <label for="setupLlmProvider">LLM provider</label>
+            <select id="setupLlmProvider"></select>
+            <p id="setupProviderHint" class="setup-hint">NVIDIA NIM: free key at build.nvidia.com</p>
+            <label for="setupModelUrl">API base URL</label>
+            <input id="setupModelUrl" type="url" placeholder="https://integrate.api.nvidia.com/v1" />
+            <label for="setupModelKey">API key <span class="optional">(session only — never saved to project files)</span></label>
+            <input id="setupModelKey" type="password" placeholder="paste key (not stored on disk)" autocomplete="off" spellcheck="false" />
+            <label for="setupLlmModel">Model id</label>
+            <div class="setup-model-row">
+              <select id="setupLlmModelSelect"></select>
+              <input id="setupLlmModel" type="text" placeholder="meta/llama-3.1-8b-instruct" />
+            </div>
+            <button id="setupFetchModels" class="ghost-button" type="button">Fetch models from provider</button>
+            <p class="setup-hint">Custom: enter base URL, fetch models, then pick or type a model id. Voice uses this LLM for natural replies.</p>
+          </section>
+          <section class="setup-panel" data-panel="2" hidden>
+            <label for="setupAgentKind">Background agent</label>
+            <select id="setupAgentKind">
+              <option value="internal">OpenLive agent (search · time · calc)</option>
+              <option value="none">Voice only — no agent</option>
+            </select>
+            <label class="checkbox-row" for="setupAutoDelegate"><input id="setupAutoDelegate" type="checkbox" checked /><span>Auto-delegate task-like speech to the agent while talking</span></label>
+            <div class="setup-probe-row">
+              <button id="setupProbeAgent" class="ghost-button" type="button">Test LLM + agent</button>
+              <span id="setupProbeStatus" class="setup-probe-status" aria-live="polite"></span>
+            </div>
+            <p class="setup-hint">Agent tools run on this gateway (web search, time, calculator). No OpenCode.</p>
+          </section>
+        </div>
+        <footer class="setup-foot">
+          <button id="setupBack" class="ghost-button" type="button" hidden>Back</button>
+          <button id="setupNext" class="primary-control setup-primary" type="button">Continue</button>
+        </footer>
+      </div>
+    </div>
 
-    <header class="topbar v2-topbar">
-      <button id="brand" class="brand" type="button" aria-label="Open diagnostics">
-        <span class="brand-symbol" aria-hidden="true"><i></i><i></i></span>
-        <span><span class="brand-name">OpenLive</span><small class="brand-version">26.7.14.1</small></span>
+    <div class="ambient" aria-hidden="true"></div>
+
+    <header class="topbar minimal-topbar">
+      <button id="brand" class="brand minimal-brand" type="button" aria-label="OpenLive menu">
+        <span class="brand-name">OpenLive</span>
+        <small class="brand-version">26.7.15</small>
       </button>
-      <nav class="workspace-switcher" aria-label="Workspace">
-        <button class="workspace-tab active" type="button" data-workspace-target="live"><span>Live Desk</span><small>conversation</small></button>
-        <button class="workspace-tab" type="button" data-workspace-target="bench"><span>LiveBench</span><small>evidence</small></button>
-      </nav>
       <nav class="top-actions" aria-label="Session controls">
-        <div id="quotaPill" class="quota-pill" hidden aria-live="polite"><span class="quota-dot"></span><span id="quotaValue">—</span></div>
         <div id="latencyPill" class="latency-pill" hidden aria-live="polite"><span class="latency-dot"></span><span id="latencyValue">— ms</span></div>
-        <button id="languageControl" class="truth-chip" type="button"><svg viewBox="0 0 24 24"><use href="#icon-translate" /></svg><span id="languageValue">Auto · EN</span></button>
+        <div id="quotaPill" class="quota-pill" hidden aria-live="polite"><span class="quota-dot"></span><span id="quotaValue">—</span></div>
         <span id="connection" class="connection-dot" role="status" aria-label="Disconnected"></span>
-        <button id="transcriptToggle" class="icon-button" type="button" aria-label="Toggle transcript" aria-pressed="false" title="Transcript (T)"><svg viewBox="0 0 24 24"><use href="#icon-transcript" /></svg></button>
-        <button id="layoutToggle" class="icon-button" type="button" aria-label="Toggle layout" aria-pressed="false" title="Toggle layout (L)"><svg viewBox="0 0 24 24"><use href="#icon-layout" /></svg></button>
-        <button id="debug" class="icon-button" type="button" aria-label="Open diagnostics" title="Diagnostics (D)"><svg viewBox="0 0 24 24"><use href="#icon-sliders" /></svg></button>
+        <label class="lang-select-wrap" title="Language / 语言">
+          <span class="visually-hidden">Language</span>
+          <select id="languageSelect" class="lang-select" aria-label="Language / 语言">
+            <option value="auto">Auto</option>
+            <option value="zh-CN">中文 · 简体</option>
+            <option value="zh-TW">中文 · 繁體</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+            <option value="de">Deutsch</option>
+          </select>
+        </label>
+        <!-- legacy id kept for older scripts -->
+        <button id="languageControl" type="button" hidden aria-hidden="true"><span id="languageValue">Auto</span></button>
+        <button id="transcriptToggle" class="icon-button" type="button" aria-label="Toggle transcript" title="Transcript (T)"><svg viewBox="0 0 24 24"><use href="#icon-transcript" /></svg></button>
+        <button id="settings" class="icon-button" type="button" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24"><use href="#icon-sliders" /></svg></button>
+        <button id="debug" class="icon-button" type="button" aria-label="Diagnostics" title="Diagnostics (D)"><svg viewBox="0 0 24 24"><use href="#icon-share" /></svg></button>
       </nav>
     </header>
 
-    <div class="signal-shell">
-      <aside class="nav-rail" aria-label="OpenLive sections">
-        <div class="nav-group">
-          <p class="rail-label">Operate</p>
-          <button class="rail-item active" data-panel-target="live"><svg viewBox="0 0 24 24"><use href="#icon-bolt" /></svg><span>Live</span><small class="rail-live">Active</small></button>
-          <button class="rail-item" data-panel-target="tasks"><svg viewBox="0 0 24 24"><use href="#icon-task" /></svg><span>Tasks</span><small id="taskCount">0</small></button>
-          <button class="rail-item" data-panel-target="evidence"><svg viewBox="0 0 24 24"><use href="#icon-proof" /></svg><span>Evidence</span><small id="evidenceCount">0</small></button>
-        </div>
-        <div class="nav-group rail-lower">
-          <p class="rail-label">Govern</p>
-          <button class="rail-item" id="memoryControl"><svg viewBox="0 0 24 24"><use href="#icon-memory" /></svg><span>Memory</span><small id="memoryBadge">Off</small></button>
-          <button class="rail-item" id="privacyControl"><svg viewBox="0 0 24 24"><use href="#icon-shield" /></svg><span>Privacy</span><small>Local</small></button>
-          <button id="settings" class="rail-item" type="button"><svg viewBox="0 0 24 24"><use href="#icon-sliders" /></svg><span>Settings</span></button>
-        </div>
+    <!-- Hidden workspace controls (kept for parity modules) -->
+    <nav class="workspace-switcher" hidden aria-hidden="true">
+      <button class="workspace-tab active" type="button" data-workspace-target="live"></button>
+      <button class="workspace-tab" type="button" data-workspace-target="bench"></button>
+    </nav>
+    <button id="layoutToggle" type="button" hidden></button>
+
+    <div class="signal-shell minimal-shell">
+      <aside class="nav-rail" hidden aria-hidden="true">
+        <button class="rail-item active" data-panel-target="live"></button>
+        <button class="rail-item" data-panel-target="tasks"><small id="taskCount">0</small></button>
+        <button class="rail-item" data-panel-target="evidence"><small id="evidenceCount">0</small></button>
+        <button class="rail-item" id="memoryControl"><small id="memoryBadge">Off</small></button>
+        <button class="rail-item" id="privacyControl"></button>
       </aside>
 
-      <main class="live-desk" aria-label="Live voice workspace">
-        <section class="session-ribbon" aria-label="Session truth">
-          <div><span class="eyebrow">Realtime session</span><strong id="sessionHeadline">Ready for a live session</strong></div>
-          <div class="ribbon-signals">
-            <span class="status-token"><i class="cyan"></i><span id="transportLabel">WebSocket PCM</span></span>
-            <span class="status-token"><i class="green"></i><span id="memoryScopeLabel">Session memory</span></span>
-            <span class="status-token"><i class="yellow"></i><span id="evidenceLabel">Evidence on</span></span>
-          </div>
+      <main class="live-desk minimal-desk" aria-label="Live voice">
+        <section class="session-ribbon" hidden aria-hidden="true">
+          <strong id="sessionHeadline">Ready</strong>
+          <span id="transportLabel">WebSocket PCM</span>
+          <span id="memoryScopeLabel">Session memory</span>
+          <span id="evidenceLabel">Evidence on</span>
+          <span id="providerChip" hidden><strong>—</strong><span>provider</span></span>
         </section>
 
-        <section class="voice-stage" aria-label="Voice conversation">
-          <div class="stage-grid">
-            <section class="presence" aria-live="polite">
-              <div class="turn-trace" aria-label="Conversation floor state">
-                <span class="trace-step active">Listen</span><i></i><span class="trace-step">Understand</span><i></i><span class="trace-step">Respond</span>
+        <section class="voice-stage minimal-stage" aria-label="Voice conversation">
+          <div class="stage-grid minimal-grid">
+            <section class="presence minimal-presence" aria-live="polite">
+              <div class="turn-trace" hidden aria-hidden="true">
+                <span class="trace-step active">Listen</span><span class="trace-step">Understand</span><span class="trace-step">Respond</span>
               </div>
               <div class="orb-shell" id="orbShell">
-                <div class="orb-aura" aria-hidden="true"></div><div class="orb-glow" aria-hidden="true"></div>
-                <canvas id="voiceOrb" width="640" height="640" role="img" aria-label="Voice activity visualization"></canvas>
-                <div class="orb-ring" aria-hidden="true"></div><div id="backchannelBadge" class="backchannel-badge" aria-hidden="true">mhmm</div>
-                <div class="orb-status"><i></i><span id="floorLabel">Floor open</span></div>
+                <div class="orb-aura" aria-hidden="true"></div>
+                <div class="orb-glow" aria-hidden="true"></div>
+                <canvas id="voiceOrb" width="640" height="640" role="img" aria-label="Voice activity"></canvas>
+                <div class="orb-ring" aria-hidden="true"></div>
+                <div id="backchannelBadge" class="backchannel-badge" aria-hidden="true">mhmm</div>
+                <div class="orb-status" hidden><i></i><span id="floorLabel">Floor open</span></div>
               </div>
-              <div class="voice-copy">
+              <div class="voice-copy minimal-copy">
                 <p id="stateLabel" class="state-label">Ready when you are</p>
-                <h1 id="stateTitle">Stay in the conversation.<br /><em>Watch the work happen.</em></h1>
-                <p id="stateDetail" class="state-detail">Natural full-duplex voice, visible delegated work, and an evidence trail you can inspect.</p>
+                <h1 id="stateTitle" class="visually-hidden">OpenLive</h1>
+                <p id="stateDetail" class="state-detail">Tap the mic or press Space to start.</p>
               </div>
               <p id="assistantText" class="assistant-ephemeral" aria-live="polite"></p>
               <div id="notice" class="notice" role="status" hidden></div>
+              <div id="agentToast" class="agent-toast" hidden aria-live="polite"></div>
+              <div id="researchProgress" class="research-progress" hidden aria-live="polite">
+                <div class="research-progress-bar"><i></i></div>
+                <span id="researchProgressLabel">Research agents…</span>
+              </div>
+              <div id="agentConfirmModal" class="agent-confirm-modal" hidden role="dialog" aria-modal="true" aria-labelledby="agentConfirmTitle">
+                <div class="agent-confirm-card">
+                  <strong id="agentConfirmTitle">Confirm action</strong>
+                  <p id="agentConfirmMessage"></p>
+                  <pre id="agentConfirmPreview" class="agent-confirm-preview" hidden></pre>
+                  <div class="agent-confirm-actions">
+                    <button type="button" id="agentConfirmDeny" class="settings-btn ghost">Cancel</button>
+                    <button type="button" id="agentConfirmApprove" class="settings-btn">Approve</button>
+                  </div>
+                </div>
+              </div>
             </section>
 
-            <aside id="captureStage" class="capture-stage" aria-label="Visual inputs" data-empty="true">
-              <div class="capture-head"><div><span class="eyebrow">Visual context</span><strong>Local preview</strong><small id="visualCapability" class="capability-truth">Provider not negotiated</small></div><span class="proof-badge">User approved</span></div>
-              <div class="capture-stack">
-                <figure id="cameraFigure" class="capture-card" hidden><video id="cameraPreview" muted playsinline hidden></video><figcaption><span><i class="capture-dot"></i>Camera</span><small id="cameraTruth">Local only</small></figcaption></figure>
-                <figure id="screenFigure" class="capture-card" hidden><video id="screenPreview" muted playsinline hidden></video><figcaption><span><i class="capture-dot coral"></i>Screen</span><small id="screenTruth">Local only</small></figcaption></figure>
-                <div id="captureEmpty" class="capture-empty"><span class="capture-glyph"><svg viewBox="0 0 24 24"><use href="#icon-camera" /></svg></span><strong>No visual input</strong><p>Camera and screen previews stay local until you explicitly share a snapshot.</p></div>
-              </div>
-              <button id="snapshotAction" class="snapshot-action" type="button" disabled><span>Share one frame</span><small>bounded · logged</small><svg viewBox="0 0 24 24"><use href="#icon-arrow" /></svg></button>
+            <aside id="captureStage" class="capture-stage" hidden aria-hidden="true" data-empty="true">
+              <video id="cameraPreview" muted playsinline hidden></video>
+              <video id="screenPreview" muted playsinline hidden></video>
+              <span id="visualCapability"></span>
+              <span id="cameraTruth"></span>
+              <span id="screenTruth"></span>
+              <div id="cameraFigure" hidden></div>
+              <div id="screenFigure" hidden></div>
+              <div id="captureEmpty"></div>
+              <button id="snapshotAction" type="button" hidden disabled></button>
             </aside>
           </div>
 
           <aside id="transcriptDrawer" class="transcript-drawer" aria-label="Live transcript" data-open="false">
-            <header class="drawer-head"><div><p class="drawer-eyebrow">Live transcript</p><strong id="transcriptStatus">No conversation yet</strong></div><div class="drawer-actions"><button id="transcriptClear" class="ghost-button" type="button" disabled>Clear</button><button id="transcriptClose" class="icon-button" type="button" aria-label="Close transcript"><svg viewBox="0 0 24 24"><use href="#icon-close" /></svg></button></div></header>
+            <header class="drawer-head">
+              <div><p class="drawer-eyebrow">Transcript</p><strong id="transcriptStatus">No conversation yet</strong></div>
+              <div class="drawer-actions">
+                <button id="transcriptExport" class="ghost-button" type="button" disabled>Export</button>
+                <button id="transcriptClear" class="ghost-button" type="button" disabled>Clear</button>
+                <button id="transcriptClose" class="icon-button" type="button" aria-label="Close"><svg viewBox="0 0 24 24"><use href="#icon-close" /></svg></button>
+              </div>
+            </header>
             <ol id="transcriptLog" class="transcript-log" aria-live="polite"></ol>
-            <footer class="drawer-foot"><span id="transcriptHint" class="drawer-hint">Session transcript is ephemeral unless you explicitly save it.</span></footer>
+            <footer class="drawer-foot"><span id="transcriptHint" class="drawer-hint">Fillers are cleaned for agent tasks when enabled.</span></footer>
           </aside>
         </section>
 
-        <footer class="control-dock" aria-label="Voice controls">
-          <button id="instructions" class="dock-button instructions-control" type="button" aria-label="Custom instructions" title="Instructions (I)"><svg viewBox="0 0 24 24"><use href="#icon-instructions" /></svg><span id="instructionsBadge" class="instructions-badge" hidden>!</span></button>
-          <button id="camera" class="dock-button camera-control" type="button" aria-label="Start camera preview" aria-pressed="false" title="Camera (C)"><svg viewBox="0 0 24 24"><use href="#icon-camera" /></svg></button>
-          <div class="primary-cluster"><button id="end" class="dock-button end-control" type="button" aria-label="End conversation" hidden title="End (Esc)"><svg viewBox="0 0 24 24"><use href="#icon-end" /></svg></button><button id="primary" class="primary-control" type="button"><svg class="mic-icon" viewBox="0 0 24 24"><use href="#icon-mic" /></svg><svg class="ptt-icon" viewBox="0 0 24 24"><use href="#icon-ptt" /></svg><span id="primaryLabel">Start</span></button><button id="mode" class="dock-button mode-control" type="button" aria-label="Conversation mode" title="Mode (M)"><svg viewBox="0 0 24 24"><use href="#icon-mode" /></svg><span id="modeBadge" class="mode-badge">Open</span></button></div>
-          <button id="screenShare" class="dock-button screen-control" type="button" aria-label="Start screen preview" aria-pressed="false" title="Share screen (Shift+C)"><svg viewBox="0 0 24 24"><use href="#icon-screen" /></svg></button>
-          <button id="voice" class="dock-button voice-control" type="button" aria-label="Voice picker" title="Voice (V)"><svg viewBox="0 0 24 24"><use href="#icon-voice" /></svg><span id="voiceBadge" class="voice-badge">Auto</span></button>
+        <!-- Bottom composer — ChatGPT-voice inspired -->
+        <footer class="control-dock minimal-dock" aria-label="Voice controls">
+          <div class="composer-bar">
+            <button id="taskAdd" class="composer-icon" type="button" aria-label="New task" title="New task">
+              <svg viewBox="0 0 24 24"><use href="#icon-plus" /></svg>
+            </button>
+            <input id="composerInput" class="composer-input" type="text" placeholder="Type or speak" autocomplete="off" />
+            <button id="primary" class="composer-mic" type="button" aria-label="Start conversation">
+              <svg class="mic-icon" viewBox="0 0 24 24"><use href="#icon-mic" /></svg>
+              <svg class="ptt-icon" viewBox="0 0 24 24" hidden><use href="#icon-ptt" /></svg>
+              <span id="primaryLabel" class="visually-hidden">Start</span>
+            </button>
+            <button id="end" class="composer-end" type="button" aria-label="End" hidden title="End (Esc)">
+              <svg viewBox="0 0 24 24"><use href="#icon-close" /></svg>
+            </button>
+          </div>
+          <!-- Hidden dock buttons retained for keyboard / parity modules -->
+          <button id="instructions" type="button" hidden><span id="instructionsBadge" hidden></span></button>
+          <button id="camera" type="button" hidden></button>
+          <button id="screenShare" type="button" hidden></button>
+          <button id="mode" type="button" hidden><span id="modeBadge">Open</span></button>
+          <button id="voice" type="button" hidden><span id="voiceBadge">Auto</span></button>
         </footer>
       </main>
 
-      <aside class="context-rail" aria-label="Tasks and evidence">
+      <aside class="context-rail minimal-rail" aria-label="Tasks and evidence">
         <section class="context-section task-section">
-          <header class="context-head"><div><span class="eyebrow">Explicit intent</span><h2>Tasks</h2></div><button id="taskAdd" class="mini-action" type="button" aria-label="New task">+ New</button></header>
-          <div id="taskRail" class="task-rail"><div class="rail-empty"><span><svg viewBox="0 0 24 24"><use href="#icon-task" /></svg></span><strong>Nothing delegated yet</strong><p>Ask OpenLive to research, compare, or prepare something while you keep talking.</p></div></div>
+          <header class="context-head"><div><span class="eyebrow">Tasks</span><h2>Agent work</h2></div></header>
+          <div id="taskRail" class="task-rail">
+            <div class="rail-empty"><strong>No tasks yet</strong><p>Ask OpenLive to research or build something while you keep talking.</p></div>
+          </div>
         </section>
         <section class="context-section evidence-section">
-          <header class="context-head"><div><span class="eyebrow">Append-only ledger</span><h2>Evidence</h2></div><button id="evidenceExpand" class="mini-action" type="button">Inspect</button></header>
-          <ol id="evidenceFeed" class="evidence-feed"><li><i class="cyan"></i><div><strong>Runtime ready</strong><p>Capability manifest loaded</p><time>now</time></div></li><li><i class="green"></i><div><strong>Memory scoped</strong><p>Session only · durable off</p><time>now</time></div></li></ol>
-          <button id="exportEvidence" class="evidence-export" type="button"><span>Export redacted evidence</span><small>JSONL bundle</small></button>
+          <header class="context-head"><div><span class="eyebrow">Evidence</span><h2>Ledger</h2></div><button id="evidenceExpand" class="mini-action" type="button">Inspect</button></header>
+          <ol id="evidenceFeed" class="evidence-feed">
+            <li><i class="cyan"></i><div><strong>Runtime ready</strong><p>OpenLive 26.7.15</p><time>now</time></div></li>
+          </ol>
+          <button id="exportEvidence" class="evidence-export" type="button"><span>Export evidence</span></button>
         </section>
-        <section class="trust-strip" aria-label="Privacy and safety"><svg viewBox="0 0 24 24"><use href="#icon-shield" /></svg><div><strong>Private by default</strong><p>External effects require approval. Durable memory is off.</p></div></section>
+        <section class="trust-strip"><div><strong>Private by default</strong><p>Keys stay in this browser until you send a request.</p></div></section>
       </aside>
     </div>
 
-    <section id="benchWorkspace" class="bench-workspace" hidden aria-label="LiveBench">
-      <header class="bench-hero"><div><span class="eyebrow">Release evidence · benchmark 26.7.14.1</span><h1>Performance you can <em>inspect.</em></h1><p>Every score links to its environment, trace, rubric, and failure examples. Reference bands are never presented as direct head-to-head results.</p></div><div class="bench-score"><span>Release posture</span><strong>7 / 12</strong><small>gates represented</small></div></header>
-      <div class="bench-grid"><article class="bench-card featured"><header><span>Conversational floor</span><small class="evidence-tier">Internal gate</small></header><strong>—</strong><p>Run the deterministic scenario suite to establish p50 and p95.</p><div class="threshold-line"><i></i><span>Target ≤ 500 ms · blocker &gt; 900 ms</span></div></article><article class="bench-card"><header><span>Interruption halt</span><small class="evidence-tier">Runtime proven</small></header><strong>&lt; 240<small> ms</small></strong><p>Local ducking and generation-scoped cancellation instrumented.</p></article><article class="bench-card"><header><span>Task acknowledgement</span><small class="evidence-tier demo">Demo fixture</small></header><strong>—</strong><p>Enabled after the task orchestrator milestone.</p></article><article class="bench-card"><header><span>Trust blockers</span><small class="evidence-tier">Release gate</small></header><strong>0</strong><p>No unauthorized side effects or hidden capture state permitted.</p></article></div>
-      <section class="scenario-table"><header><div><span class="eyebrow">Scenario explorer</span><h2>Evidence matrix</h2></div><button id="runBenchDemo" class="primary-small" type="button">Run local demonstration</button></header><div id="scenarioMatrix"><div class="scenario-row heading"><span>Scenario</span><span>Evidence</span><span>Target</span><span>Status</span></div><div class="scenario-row"><span>Endpointing · clean speech</span><span>Runtime trace</span><span>p95 ≤ 900 ms</span><strong class="pending">Not run</strong></div><div class="scenario-row"><span>Barge-in · cooperative overlap</span><span>Audio + ledger</span><span>p95 ≤ 240 ms</span><strong class="ready">Instrumented</strong></div><div class="scenario-row"><span>Visual capture truth</span><span>Permission state</span><span>0 stale indicators</span><strong class="ready">Ready</strong></div><div class="scenario-row"><span>Task acknowledgement latency</span><span>task_acknowledged</span><span>p50 ≤ 500 ms</span><strong class="pending">Not run</strong></div><div class="scenario-row"><span>Evidence linkage completeness</span><span>task_outcome.evidence_ids</span><span>100% linked</span><strong class="pending">Not run</strong></div><div class="scenario-row"><span>Resume without duplication</span><span>Duplicate outcome rejected</span><span>0 duplicates</span><strong class="pending">Not run</strong></div></div></section>
+    <section id="benchWorkspace" class="bench-workspace" hidden>
+      <header class="bench-hero"><div><span class="eyebrow">26.7.15</span><h1>LiveBench</h1></div><div class="bench-score"><strong>—</strong></div></header>
+      <div class="bench-grid"></div>
+      <section class="scenario-table"><header><button id="runBenchDemo" class="primary-small" type="button">Run demo</button></header><div id="scenarioMatrix"></div></section>
     </section>
 
-    <section id="instructionsPanel" class="sheet instructions-sheet" aria-label="Custom instructions" data-open="false" hidden><header class="sheet-head"><strong>Speaking style</strong><button id="closeInstructions" class="icon-button" type="button"><svg viewBox="0 0 24 24"><use href="#icon-close" /></svg></button></header><div class="sheet-body"><p class="sheet-intro">Adjust the next turn without restarting the session.</p><fieldset class="sheet-group axis-group" data-axis="speed"><legend>Pace</legend><div class="axis-options"></div></fieldset><fieldset class="sheet-group axis-group" data-axis="detail"><legend>Detail</legend><div class="axis-options"></div></fieldset><fieldset class="sheet-group axis-group" data-axis="complexity"><legend>Complexity</legend><div class="axis-options"></div></fieldset><fieldset class="sheet-group axis-group" data-axis="tone"><legend>Tone</legend><div class="axis-options"></div></fieldset></div><footer class="sheet-foot"><button id="resetInstructions" class="ghost-button" type="button">Reset to auto</button><span class="sheet-hint">Overrides layer over the selected conversation mode.</span></footer></section>
+    <section id="instructionsPanel" class="sheet instructions-sheet" data-open="false" hidden>
+      <header class="sheet-head"><strong>Speaking style</strong><button id="closeInstructions" class="icon-button" type="button"><svg viewBox="0 0 24 24"><use href="#icon-close" /></svg></button></header>
+      <div class="sheet-body">
+        <fieldset class="sheet-group axis-group" data-axis="speed"><legend>Pace</legend><div class="axis-options"></div></fieldset>
+        <fieldset class="sheet-group axis-group" data-axis="detail"><legend>Detail</legend><div class="axis-options"></div></fieldset>
+        <fieldset class="sheet-group axis-group" data-axis="complexity"><legend>Complexity</legend><div class="axis-options"></div></fieldset>
+        <fieldset class="sheet-group axis-group" data-axis="tone"><legend>Tone</legend><div class="axis-options"></div></fieldset>
+      </div>
+      <footer class="sheet-foot"><button id="resetInstructions" class="ghost-button" type="button">Reset</button></footer>
+    </section>
 
-    <section id="settingsPanel" class="sheet" aria-label="Conversation settings" data-open="false" hidden><header class="sheet-head"><div><span class="eyebrow">Live configuration</span><strong>Conversation settings</strong></div><button id="closeSettings" class="icon-button" type="button"><svg viewBox="0 0 24 24"><use href="#icon-close" /></svg></button></header><div class="sheet-body"><fieldset class="sheet-group"><legend>Conversation</legend><label for="backchannels">Backchannels</label><select id="backchannels"><option value="off">Off</option><option value="minimal" selected>Minimal</option><option value="natural">Natural</option><option value="expressive">Expressive</option></select><label for="entryMode">Entry mode</label><select id="entryMode"><option value="auto" selected>Auto (VAD)</option><option value="ptt">Push-to-talk (hold)</option></select><label for="sessionCap">Session cap</label><select id="sessionCap"><option value="0" selected>Unlimited</option><option value="5">5 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">60 minutes</option></select></fieldset><fieldset class="sheet-group"><legend>Per-call instruction</legend><label for="speedOverride">Speaking pace</label><select id="speedOverride"><option value="auto" selected>Auto</option><option value="slower">Slower</option><option value="balanced">Balanced</option><option value="faster">Faster</option></select><label for="detailOverride">Detail level</label><select id="detailOverride"><option value="auto" selected>Auto</option><option value="concise">Concise</option><option value="balanced">Balanced</option><option value="thorough">Thorough</option></select><label for="complexityOverride">Complexity</label><select id="complexityOverride"><option value="auto" selected>Auto</option><option value="simple">Simple</option><option value="balanced">Balanced</option><option value="expert">Expert</option></select><label for="toneOverride">Tone</label><select id="toneOverride"><option value="auto" selected>Auto</option><option value="formal">Formal</option><option value="balanced">Balanced</option><option value="casual">Casual</option></select></fieldset><fieldset class="sheet-group"><legend>Appearance</legend><label for="themeSelect">Theme</label><select id="themeSelect"><option value="aurora" selected>Signal Desk</option><option value="graphite">Graphite</option><option value="signal">High contrast</option></select><label for="motionRange">Motion intensity <span id="motionValue" class="range-readout">100%</span></label><input id="motionRange" type="range" min="0" max="100" value="100" /><label class="checkbox-row" for="latencyToggle"><input id="latencyToggle" type="checkbox" /><span>Show latency pill</span></label></fieldset></div></section>
+    <section id="settingsPanel" class="sheet settings-sheet" data-open="false" hidden>
+      <header class="sheet-head settings-head">
+        <div class="settings-title">
+          <span class="settings-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-gear"/></svg></span>
+          <div>
+            <span class="eyebrow">OpenLive</span>
+            <strong>Settings</strong>
+          </div>
+        </div>
+        <button id="closeSettings" class="icon-button" type="button" aria-label="Close settings"><svg viewBox="0 0 24 24"><use href="#icon-close"/></svg></button>
+      </header>
+      <div class="sheet-body settings-body">
 
-    <section id="voicePanel" class="sheet" aria-label="Voice picker" data-open="false" hidden><header class="sheet-head"><strong>Voice</strong><button id="closeVoice" class="icon-button" type="button"><svg viewBox="0 0 24 24"><use href="#icon-close" /></svg></button></header><ul id="voiceList" class="voice-list" role="listbox"></ul><footer class="sheet-foot"><span class="sheet-hint">Voices are advertised by the active provider.</span></footer></section>
-    <section id="modePanel" class="sheet" aria-label="Conversation mode" data-open="false" hidden><header class="sheet-head"><strong>Conversation mode</strong><button id="closeMode" class="icon-button" type="button"><svg viewBox="0 0 24 24"><use href="#icon-close" /></svg></button></header><ul id="modeList" class="mode-list" role="listbox"></ul><footer class="sheet-foot"><span class="sheet-hint">Modes tune pause tolerance, interruption sensitivity, and response instructions.</span></footer></section>
+        <section class="settings-section">
+          <h3 class="settings-section-title">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-mic"/></svg>
+            Conversation
+          </h3>
+          <div class="settings-card">
+            <label class="settings-row" for="backchannels">
+              <span class="settings-row-label">Backchannels</span>
+              <select id="backchannels"><option value="off">Off</option><option value="minimal">Minimal</option><option value="natural" selected>Natural</option><option value="expressive">Expressive</option></select>
+            </label>
+            <label class="settings-row" for="entryMode">
+              <span class="settings-row-label">Entry mode</span>
+              <select id="entryMode"><option value="auto" selected>Auto (VAD)</option><option value="ptt">Push-to-talk</option></select>
+            </label>
+            <label class="settings-row" for="sessionCap">
+              <span class="settings-row-label">Session cap</span>
+              <select id="sessionCap"><option value="0" selected>Unlimited</option><option value="5">5 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select>
+            </label>
+          </div>
+        </section>
 
-    <aside id="diagnostics" class="diagnostics" aria-label="Runtime diagnostics" aria-hidden="true"><div class="sheet-handle"></div><header class="diagnostic-header"><div><p>Live diagnostics</p><strong id="providerHint">Provider appears after connection</strong></div><button id="closeDebug" class="icon-button" type="button"><svg viewBox="0 0 24 24"><use href="#icon-close" /></svg></button></header><div class="metrics"><article><span>Speech</span><strong id="speechProbability">0.00</strong></article><article><span>Echo</span><strong id="echoProbability">0.00</strong></article><article><span>State</span><strong id="interactionState">idle</strong></article><article><span>Gain</span><strong id="outputGain">100%</strong></article><article><span>Buffer</span><strong id="playbackBuffer">0 / 40 ms</strong></article><article><span>Quality</span><strong id="connectionQuality">—</strong></article><article><span>p50</span><strong id="latencyP50">— ms</strong></article><article><span>p95</span><strong id="latencyP95">— ms</strong></article></div><ol id="timeline" class="timeline"></ol></aside>
+        <section class="settings-section">
+          <h3 class="settings-section-title">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-bolt"/></svg>
+            Language model
+          </h3>
+          <p class="settings-hint">Powers natural voice replies and the built-in agent. Prefer <strong>NVIDIA NIM</strong> (free key) or local <strong>Ollama</strong>.</p>
+          <div class="settings-card">
+            <label class="settings-row" for="settingsLlmProvider">
+              <span class="settings-row-label">Provider</span>
+              <select id="settingsLlmProvider"></select>
+            </label>
+            <label class="settings-row" for="settingsModelUrl">
+              <span class="settings-row-label"><svg class="row-ico" viewBox="0 0 24 24"><use href="#icon-link"/></svg> Base URL</span>
+              <input id="settingsModelUrl" type="url" placeholder="https://integrate.api.nvidia.com/v1" autocomplete="off" />
+            </label>
+            <label class="settings-row" for="settingsModelKey">
+              <span class="settings-row-label"><svg class="row-ico" viewBox="0 0 24 24"><use href="#icon-key"/></svg> API key (session only)</span>
+              <input id="settingsModelKey" type="password" placeholder="not saved to disk" autocomplete="off" spellcheck="false" />
+            </label>
+            <label class="settings-row" for="settingsLlmModel">
+              <span class="settings-row-label">Model id</span>
+              <input id="settingsLlmModel" type="text" placeholder="meta/llama-3.1-8b-instruct" autocomplete="off" />
+            </label>
+            <div class="settings-row settings-row-actions">
+              <button id="settingsFetchModels" class="settings-btn ghost" type="button">Fetch models</button>
+              <select id="settingsLlmModelSelect" style="max-width:55%"></select>
+            </div>
+          </div>
+        </section>
 
-    <div id="onboarding" class="onboarding" data-open="false" aria-live="polite"><div class="onboarding-card"><span class="onboarding-eyebrow">OpenLive 26.7.14.1</span><h2>Conversation is only half the interface.</h2><p>Speak naturally, delegate work without stopping, inspect the evidence, and keep every persistent capability under your control.</p><ul class="onboarding-bullets"><li><span class="kbd">Space</span> Hold for push-to-talk when enabled</li><li><span class="kbd">M</span> Mute or resume microphone</li><li><span class="kbd">T</span> Toggle live transcript</li><li><span class="kbd">Esc</span> End the conversation</li></ul><div class="onboarding-actions"><button id="onboardingDismiss" class="ghost-button" type="button">Don't show again</button><button id="onboardingStart" class="primary-control" type="button">Enter Signal Desk</button></div></div></div>
+        <section class="settings-section">
+          <h3 class="settings-section-title">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-agent"/></svg>
+            Background agent
+          </h3>
+          <p class="settings-hint">Built-in tools: web search, time, calculator. Uses the language model above — no external coding agent.</p>
+          <div class="settings-card">
+            <label class="settings-row" for="settingsAgentKind">
+              <span class="settings-row-label">Agent</span>
+              <select id="settingsAgentKind">
+                <option value="internal">OpenLive agent</option>
+                <option value="none">None — voice only</option>
+              </select>
+            </label>
+            <label class="settings-row" for="settingsAgentClass">
+              <span class="settings-row-label">Agent class</span>
+              <select id="settingsAgentClass">
+                <option value="general" selected>General — all tools</option>
+                <option value="researcher">Researcher — search &amp; browse only</option>
+                <option value="coder">Coder — files &amp; calc</option>
+                <option value="safe">Safe — read-only + calc/time</option>
+              </select>
+            </label>
+            <p class="settings-hint" style="margin:0 12px 10px">Classes limit tools and tag memory. Say “yes” / “确认” to approve a pending file change by voice.</p>
+            <div class="settings-row settings-row-actions">
+              <button id="settingsProbeAgent" class="settings-btn" type="button">
+                <svg viewBox="0 0 24 24"><use href="#icon-check"/></svg>
+                Test LLM + agent
+              </button>
+              <span id="settingsProbeStatus" class="setup-probe-status" aria-live="polite"></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3 class="settings-section-title">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-voice"/></svg>
+            Voice &amp; language
+          </h3>
+          <p class="settings-hint">Preferred path: <strong>open-source Piper</strong> neural TTS → built-in formant backup → browser (lowest quality). If Piper is missing, you’ll get a one-click install command.</p>
+          <div class="settings-card">
+            <label class="settings-row" for="settingsLanguage">
+              <span class="settings-row-label">Language / 语言</span>
+              <select id="settingsLanguage">
+                <option value="auto">Auto (match user)</option>
+                <option value="zh-CN">中文 · 简体 Chinese (Simplified)</option>
+                <option value="zh-TW">中文 · 繁體 Chinese (Traditional)</option>
+                <option value="en">English</option>
+                <option value="ja">日本語 Japanese</option>
+                <option value="es">Español Spanish</option>
+                <option value="fr">Français French</option>
+                <option value="de">Deutsch German</option>
+              </select>
+            </label>
+            <label class="settings-row" for="settingsTtsEngine">
+              <span class="settings-row-label">TTS engine</span>
+              <select id="settingsTtsEngine">
+                <option value="auto" selected>Auto (Piper → formant → browser)</option>
+                <option value="piper">Piper only (open-source)</option>
+                <option value="formant">Formant (built-in backup)</option>
+                <option value="browser">Browser (Web Speech)</option>
+              </select>
+            </label>
+            <label class="settings-row" for="settingsThoughtDepth">
+              <span class="settings-row-label">Depth of thought</span>
+              <select id="settingsThoughtDepth">
+                <option value="voice" selected>Voice — short answers</option>
+                <option value="balanced">Balanced</option>
+                <option value="deep">Deep — research-style</option>
+              </select>
+            </label>
+            <label class="settings-row" for="settingsSystemVoice">
+              <span class="settings-row-label">Browser voice (fallback)</span>
+              <select id="settingsSystemVoice">
+                <option value="">Auto</option>
+              </select>
+            </label>
+            <p id="settingsVoiceStatus" class="settings-hint" style="margin:0 12px 10px">Checking Piper / system voices…</p>
+            <p id="settingsPiperStatus" class="settings-hint" style="margin:0 12px 10px"></p>
+            <label class="settings-row" for="settingsVoice">
+              <span class="settings-row-label">Voice profile</span>
+              <select id="settingsVoice"></select>
+            </label>
+            <div class="settings-row settings-row-actions">
+              <button id="settingsRefreshVoices" class="settings-btn ghost" type="button">Refresh TTS</button>
+              <button id="settingsInstallPiper" class="settings-btn ghost" type="button">Piper install cmd</button>
+              <button id="settingsPreviewVoice" class="settings-btn" type="button">Preview</button>
+            </div>
+            <div class="settings-row settings-row-actions">
+              <button id="settingsExportMemory" class="settings-btn ghost" type="button">Export memory</button>
+              <button id="settingsClearMemory" class="settings-btn ghost" type="button">Clear memory</button>
+            </div>
+            <p id="settingsProfileStatus" class="settings-hint" style="margin:0 12px 10px">Profile: …</p>
+            <label class="settings-row" for="settingsProfileName">
+              <span class="settings-row-label">Your name</span>
+              <input id="settingsProfileName" type="text" maxlength="60" placeholder="e.g. Alex" autocomplete="name" />
+            </label>
+            <label class="settings-row" for="settingsProfileTimezone">
+              <span class="settings-row-label">Timezone</span>
+              <input id="settingsProfileTimezone" type="text" maxlength="80" placeholder="e.g. America/New_York" />
+            </label>
+            <label class="settings-row" for="settingsProfileNotes">
+              <span class="settings-row-label">Notes</span>
+              <input id="settingsProfileNotes" type="text" maxlength="500" placeholder="Anything useful for OpenLive" />
+            </label>
+            <label class="settings-row" for="settingsProfileFact">
+              <span class="settings-row-label">Add fact</span>
+              <input id="settingsProfileFact" type="text" maxlength="200" placeholder="e.g. likes green tea" />
+            </label>
+            <p class="settings-hint" style="margin:4px 12px 6px">Saved facts</p>
+            <ul id="settingsProfileFactList" class="profile-fact-list" aria-label="Profile facts"></ul>
+            <div class="settings-row settings-row-actions">
+              <button id="settingsSaveProfile" class="settings-btn" type="button">Save profile</button>
+              <button id="settingsClearFacts" class="settings-btn ghost" type="button">Clear facts</button>
+              <button id="settingsExportProfile" class="settings-btn ghost" type="button">Export</button>
+              <button id="settingsClearProfile" class="settings-btn ghost" type="button">Clear all</button>
+              <button id="settingsRefreshProfile" class="settings-btn ghost" type="button">Refresh</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3 class="settings-section-title">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-memory"/></svg>
+            Sandbox workspace
+          </h3>
+          <p class="settings-hint">Agent file tools run inside a constrained sandbox under your app data (not your whole disk). Lab/test folders are created automatically.</p>
+          <div class="settings-card">
+            <p id="settingsSandboxStatus" class="settings-hint" style="margin:10px 12px">Loading sandbox…</p>
+            <ul id="settingsSandboxList" class="sandbox-file-list" aria-label="Sandbox files"></ul>
+            <p class="settings-hint" style="margin:8px 12px 6px">Recent screenshots &amp; PDFs</p>
+            <div id="settingsMediaGallery" class="media-gallery" aria-label="Lab media gallery"></div>
+            <div class="settings-row settings-row-actions">
+              <button id="settingsSandboxRefresh" class="settings-btn ghost" type="button">Refresh files</button>
+              <button id="settingsSandboxSelfTest" class="settings-btn ghost" type="button">Run self-test</button>
+              <button id="settingsDeepDemo" class="settings-btn ghost" type="button">Demo deep pool</button>
+              <button id="settingsShotDemo" class="settings-btn ghost" type="button">Demo screenshot</button>
+            </div>
+            <p id="settingsSandboxTestStatus" class="settings-hint" style="margin:0 12px 10px"></p>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3 class="settings-section-title">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-instructions"/></svg>
+            Speaking style
+          </h3>
+          <div class="settings-card">
+            <label class="settings-row" for="speedOverride">
+              <span class="settings-row-label">Pace</span>
+              <select id="speedOverride"><option value="auto" selected>Auto</option><option value="slower">Slower</option><option value="balanced">Balanced</option><option value="faster">Faster</option></select>
+            </label>
+            <label class="settings-row" for="detailOverride">
+              <span class="settings-row-label">Detail</span>
+              <select id="detailOverride"><option value="auto" selected>Auto</option><option value="concise">Concise</option><option value="balanced">Balanced</option><option value="thorough">Thorough</option></select>
+            </label>
+            <label class="settings-row" for="complexityOverride">
+              <span class="settings-row-label">Complexity</span>
+              <select id="complexityOverride"><option value="auto" selected>Auto</option><option value="simple">Simple</option><option value="balanced">Balanced</option><option value="expert">Expert</option></select>
+            </label>
+            <label class="settings-row" for="toneOverride">
+              <span class="settings-row-label">Tone</span>
+              <select id="toneOverride"><option value="auto" selected>Auto</option><option value="formal">Formal</option><option value="balanced">Balanced</option><option value="casual">Casual</option></select>
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3 class="settings-section-title">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-layout"/></svg>
+            Appearance
+          </h3>
+          <div class="settings-card">
+            <label class="settings-row" for="themeSelect">
+              <span class="settings-row-label">Theme</span>
+              <select id="themeSelect">
+                <option value="minimal" selected>Minimal black</option>
+                <option value="chatgpt">Live Presence</option>
+                <option value="aurora">Aurora</option>
+                <option value="graphite">Graphite</option>
+                <option value="signal">High contrast</option>
+              </select>
+            </label>
+            <div class="settings-row settings-row-stack">
+              <div class="settings-row-top">
+                <span class="settings-row-label">Motion</span>
+                <span id="motionValue" class="range-readout">100%</span>
+              </div>
+              <input id="motionRange" class="silver-slider" type="range" min="0" max="100" value="100" step="1" />
+            </div>
+            <label class="settings-row settings-toggle" for="latencyToggle">
+              <span class="settings-row-label">Show latency</span>
+              <input id="latencyToggle" type="checkbox" checked />
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3 class="settings-section-title">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-shield"/></svg>
+            Runtime
+          </h3>
+          <div class="settings-card">
+            <div id="runtimeStatus" class="runtime-status"><p class="sheet-intro">Loading gateway status…</p></div>
+            <div class="settings-row settings-row-actions">
+              <button id="reopenSetup" class="settings-btn ghost" type="button">Open setup wizard</button>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </section>
+
+    <section id="voicePanel" class="sheet" data-open="false" hidden>
+      <header class="sheet-head"><strong>Voice</strong><button id="closeVoice" class="icon-button" type="button"><svg viewBox="0 0 24 24"><use href="#icon-close" /></svg></button></header>
+      <ul id="voiceList" class="voice-list" role="listbox"></ul>
+    </section>
+    <section id="modePanel" class="sheet" data-open="false" hidden>
+      <header class="sheet-head"><strong>Mode</strong><button id="closeMode" class="icon-button" type="button"><svg viewBox="0 0 24 24"><use href="#icon-close" /></svg></button></header>
+      <ul id="modeList" class="mode-list" role="listbox"></ul>
+    </section>
+
+    <aside id="diagnostics" class="diagnostics" aria-hidden="true">
+      <header class="diagnostic-header"><div><p>Diagnostics</p><strong id="providerHint">—</strong></div><button id="closeDebug" class="icon-button" type="button"><svg viewBox="0 0 24 24"><use href="#icon-close" /></svg></button></header>
+      <div class="metrics">
+        <article><span>Speech</span><strong id="speechProbability">0.00</strong></article>
+        <article><span>Echo</span><strong id="echoProbability">0.00</strong></article>
+        <article><span>State</span><strong id="interactionState">idle</strong></article>
+        <article><span>Gain</span><strong id="outputGain">100%</strong></article>
+        <article><span>Buffer</span><strong id="playbackBuffer">0 / 40 ms</strong></article>
+        <article><span>Quality</span><strong id="connectionQuality">—</strong></article>
+        <article><span>p50</span><strong id="latencyP50">—</strong></article>
+        <article><span>p95</span><strong id="latencyP95">—</strong></article>
+      </div>
+      <ol id="timeline" class="timeline"></ol>
+    </aside>
+
+    <div id="onboarding" class="onboarding" data-open="false" hidden aria-hidden="true"></div>
 
     <script type="module" src="/app.js"></script>
   </body>

@@ -1,4 +1,6 @@
 mod lease;
+mod persistence;
+mod safety;
 
 use openlive_protocol::{
     BackchannelLevel, EventEnvelope, InteractionAction, InteractionDecision, InteractionProfile,
@@ -9,6 +11,10 @@ use thiserror::Error;
 use uuid::Uuid;
 
 pub use lease::{AnswerLease, AnswerLeaseManager};
+pub use persistence::{PersistedEnvelope, PersistedTask, PersistenceError, SessionStore};
+pub use safety::{
+    SafetyDecision, SafetyDisposition, SafetyPolicy, StreamingSafety,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChronosConfig {
@@ -596,6 +602,7 @@ mod tests {
                 target_speaker_probability: 1.0,
                 turn_completion_confidence: completeness,
                 prosodic_finality: completeness,
+                semantic_completion: None,
             }),
         )
     }

@@ -1,5 +1,5 @@
 /**
- * Openlive 26.7.14.1 — ui.js
+ * Openlive 26.7.15 — ui.js
  *
  * DOM binding layer. Resolves elements once, exposes mutation helpers, and
  * keeps the rest of the codebase free of `document.querySelector` calls.
@@ -73,6 +73,7 @@ const elements = {
   transcriptLog: query("#transcriptLog"),
   transcriptStatus: query("#transcriptStatus"),
   transcriptClear: query("#transcriptClear"),
+  transcriptExport: query("#transcriptExport"),
   transcriptClose: query("#transcriptClose"),
   voice: query("#voice"),
   voiceBadge: query("#voiceBadge"),
@@ -99,6 +100,69 @@ const elements = {
   onboarding: query("#onboarding"),
   onboardingDismiss: query("#onboardingDismiss"),
   onboardingStart: query("#onboardingStart"),
+  setupWizard: query("#setupWizard"),
+  setupDisplayName: query("#setupDisplayName"),
+  setupVoice: query("#setupVoice"),
+  setupStripFillers: query("#setupStripFillers"),
+  setupBackchannels: query("#setupBackchannels"),
+  setupModelUrl: query("#setupModelUrl"),
+  setupModelKey: query("#setupModelKey"),
+  setupLlmModel: query("#setupLlmModel"),
+  setupLlmProvider: query("#setupLlmProvider"),
+  setupLlmModelSelect: query("#setupLlmModelSelect"),
+  setupFetchModels: query("#setupFetchModels"),
+  setupProviderHint: query("#setupProviderHint"),
+  setupAgentKind: query("#setupAgentKind"),
+  setupAutoDelegate: query("#setupAutoDelegate"),
+  setupProbeAgent: query("#setupProbeAgent"),
+  setupProbeStatus: query("#setupProbeStatus"),
+  setupBack: query("#setupBack"),
+  setupNext: query("#setupNext"),
+  agentToast: query("#agentToast"),
+  composerInput: query("#composerInput"),
+  taskAdd: query("#taskAdd"),
+  settingsModelUrl: query("#settingsModelUrl"),
+  settingsModelKey: query("#settingsModelKey"),
+  settingsLlmProvider: query("#settingsLlmProvider"),
+  settingsLlmModel: query("#settingsLlmModel"),
+  settingsLlmModelSelect: query("#settingsLlmModelSelect"),
+  settingsFetchModels: query("#settingsFetchModels"),
+  settingsAgentKind: query("#settingsAgentKind"),
+  settingsVoice: query("#settingsVoice"),
+  settingsSystemVoice: query("#settingsSystemVoice"),
+  settingsVoiceStatus: query("#settingsVoiceStatus"),
+  settingsRefreshVoices: query("#settingsRefreshVoices"),
+  settingsInstallPiper: query("#settingsInstallPiper"),
+  settingsExportMemory: query("#settingsExportMemory"),
+  settingsClearMemory: query("#settingsClearMemory"),
+  settingsExportProfile: query("#settingsExportProfile"),
+  settingsClearProfile: query("#settingsClearProfile"),
+  settingsRefreshProfile: query("#settingsRefreshProfile"),
+  settingsSaveProfile: query("#settingsSaveProfile"),
+  settingsClearFacts: query("#settingsClearFacts"),
+  settingsProfileStatus: query("#settingsProfileStatus"),
+  settingsProfileName: query("#settingsProfileName"),
+  settingsProfileTimezone: query("#settingsProfileTimezone"),
+  settingsProfileNotes: query("#settingsProfileNotes"),
+  settingsProfileFact: query("#settingsProfileFact"),
+  settingsProfileFactList: query("#settingsProfileFactList"),
+  settingsTtsEngine: query("#settingsTtsEngine"),
+  settingsThoughtDepth: query("#settingsThoughtDepth"),
+  settingsAgentClass: query("#settingsAgentClass"),
+  settingsPiperStatus: query("#settingsPiperStatus"),
+  settingsBrowserTts: query("#settingsBrowserTts"),
+  settingsPreviewVoice: query("#settingsPreviewVoice"),
+  settingsProbeAgent: query("#settingsProbeAgent"),
+  settingsProbeStatus: query("#settingsProbeStatus"),
+  settingsSandboxStatus: query("#settingsSandboxStatus"),
+  settingsSandboxRefresh: query("#settingsSandboxRefresh"),
+  settingsSandboxList: query("#settingsSandboxList"),
+  settingsSandboxSelfTest: query("#settingsSandboxSelfTest"),
+  settingsDeepDemo: query("#settingsDeepDemo"),
+  settingsShotDemo: query("#settingsShotDemo"),
+  settingsMediaGallery: query("#settingsMediaGallery"),
+  settingsSandboxTestStatus: query("#settingsSandboxTestStatus"),
+  reopenSetup: query("#reopenSetup"),
 };
 
 export const controls = {
@@ -129,12 +193,76 @@ export const controls = {
   closeDebug: elements.closeDebug,
   transcriptToggle: elements.transcriptToggle,
   transcriptClear: elements.transcriptClear,
+  transcriptExport: elements.transcriptExport,
   transcriptClose: elements.transcriptClose,
   closeVoice: elements.closeVoice,
   closeMode: elements.closeMode,
   voiceOrb: elements.voiceOrb,
   onboardingDismiss: elements.onboardingDismiss,
   onboardingStart: elements.onboardingStart,
+  setupWizard: elements.setupWizard,
+  setupDisplayName: elements.setupDisplayName,
+  setupVoice: elements.setupVoice,
+  setupStripFillers: elements.setupStripFillers,
+  setupBackchannels: elements.setupBackchannels,
+  setupModelUrl: elements.setupModelUrl,
+  setupModelKey: elements.setupModelKey,
+  setupLlmModel: elements.setupLlmModel,
+  setupLlmProvider: elements.setupLlmProvider,
+  setupLlmModelSelect: elements.setupLlmModelSelect,
+  setupFetchModels: elements.setupFetchModels,
+  setupProviderHint: elements.setupProviderHint,
+  setupAgentKind: elements.setupAgentKind,
+  setupAutoDelegate: elements.setupAutoDelegate,
+  setupProbeAgent: elements.setupProbeAgent,
+  setupProbeStatus: elements.setupProbeStatus,
+  setupBack: elements.setupBack,
+  setupNext: elements.setupNext,
+  agentToast: elements.agentToast,
+  composerInput: elements.composerInput,
+  taskAdd: elements.taskAdd,
+  settingsModelUrl: elements.settingsModelUrl,
+  settingsModelKey: elements.settingsModelKey,
+  settingsLlmProvider: elements.settingsLlmProvider,
+  settingsLlmModel: elements.settingsLlmModel,
+  settingsLlmModelSelect: elements.settingsLlmModelSelect,
+  settingsFetchModels: elements.settingsFetchModels,
+  settingsAgentKind: elements.settingsAgentKind,
+  settingsVoice: elements.settingsVoice,
+  settingsSystemVoice: elements.settingsSystemVoice,
+  settingsVoiceStatus: elements.settingsVoiceStatus,
+  settingsRefreshVoices: elements.settingsRefreshVoices,
+  settingsInstallPiper: elements.settingsInstallPiper,
+  settingsExportMemory: elements.settingsExportMemory,
+  settingsClearMemory: elements.settingsClearMemory,
+  settingsExportProfile: elements.settingsExportProfile,
+  settingsClearProfile: elements.settingsClearProfile,
+  settingsRefreshProfile: elements.settingsRefreshProfile,
+  settingsSaveProfile: elements.settingsSaveProfile,
+  settingsClearFacts: elements.settingsClearFacts,
+  settingsProfileStatus: elements.settingsProfileStatus,
+  settingsProfileName: elements.settingsProfileName,
+  settingsProfileTimezone: elements.settingsProfileTimezone,
+  settingsProfileNotes: elements.settingsProfileNotes,
+  settingsProfileFact: elements.settingsProfileFact,
+  settingsProfileFactList: elements.settingsProfileFactList,
+  settingsTtsEngine: elements.settingsTtsEngine,
+  settingsThoughtDepth: elements.settingsThoughtDepth,
+  settingsAgentClass: elements.settingsAgentClass,
+  settingsPiperStatus: elements.settingsPiperStatus,
+  settingsBrowserTts: elements.settingsBrowserTts,
+  settingsPreviewVoice: elements.settingsPreviewVoice,
+  settingsProbeAgent: elements.settingsProbeAgent,
+  settingsProbeStatus: elements.settingsProbeStatus,
+  settingsSandboxStatus: elements.settingsSandboxStatus,
+  settingsSandboxRefresh: elements.settingsSandboxRefresh,
+  settingsSandboxList: elements.settingsSandboxList,
+  settingsSandboxSelfTest: elements.settingsSandboxSelfTest,
+  settingsDeepDemo: elements.settingsDeepDemo,
+  settingsShotDemo: elements.settingsShotDemo,
+  settingsMediaGallery: elements.settingsMediaGallery,
+  settingsSandboxTestStatus: elements.settingsSandboxTestStatus,
+  reopenSetup: elements.reopenSetup,
 };
 
 /* ---------------------------------------------------------------------------
@@ -149,10 +277,34 @@ export const controls = {
  */
 export function setVoiceMode(mode, detail) {
   const presentation = voicePresentation(mode);
+  const prevMode = document.body.dataset.mode;
   document.body.dataset.mode = mode;
-  setText(elements.stateLabel, presentation.label);
-  setText(elements.stateTitle, presentation.title);
-  setText(elements.stateDetail, detail ?? presentation.detail);
+
+  const copyRoot =
+    elements.stateLabel?.closest(".voice-copy") ||
+    document.querySelector(".voice-copy");
+  const nextLabel = presentation.label;
+  const nextDetail = detail ?? presentation.detail;
+  const labelChanged =
+    elements.stateLabel && elements.stateLabel.textContent !== nextLabel;
+  const detailChanged =
+    elements.stateDetail && elements.stateDetail.textContent !== nextDetail;
+
+  // Brief crossfade when floor copy changes so transitions feel continuous.
+  if (copyRoot && prevMode !== mode && (labelChanged || detailChanged)) {
+    copyRoot.classList.add("is-swapping");
+    clearTimeout(setVoiceMode._swapTimer);
+    setVoiceMode._swapTimer = setTimeout(() => {
+      setText(elements.stateLabel, nextLabel);
+      setText(elements.stateTitle, presentation.title);
+      setText(elements.stateDetail, nextDetail);
+      copyRoot.classList.remove("is-swapping");
+    }, 90);
+  } else {
+    setText(elements.stateLabel, nextLabel);
+    setText(elements.stateTitle, presentation.title);
+    setText(elements.stateDetail, nextDetail);
+  }
   setText(elements.interactionState, mode);
 
   const floorLabel = document.querySelector("#floorLabel");
@@ -194,6 +346,8 @@ export function setConversationActive(active, microphoneActive = active, pttMode
   elements.primary.classList.toggle("listening", active && microphoneActive);
   elements.primary.classList.toggle("muted", active && !microphoneActive);
   elements.primary.classList.toggle("ptt-mode", pttMode);
+  // Composer mic mirrors dock state for minimal UI.
+  elements.primary.classList.toggle("composer-live", active);
   if (!active) {
     setText(elements.primaryLabel, "Start");
     elements.primary.setAttribute("aria-label", "Start conversation");
@@ -210,7 +364,16 @@ export function setConversationActive(active, microphoneActive = active, pttMode
     setText(elements.primaryLabel, "Resume");
     elements.primary.setAttribute("aria-label", "Resume microphone");
   }
-  if (elements.end) elements.end.hidden = !active;
+  if (elements.end) {
+    elements.end.hidden = !active;
+    // Force reflow so end-button entrance animation restarts cleanly.
+    if (active) {
+      void elements.end.offsetWidth;
+    }
+  }
+  const composer = document.querySelector(".composer-bar");
+  composer?.classList.toggle("is-live", active);
+  composer?.classList.toggle("is-muted", active && !microphoneActive);
   const sessionHeadline = document.querySelector("#sessionHeadline");
   setText(
     sessionHeadline,
@@ -302,7 +465,12 @@ export function setPlaybackBuffer(queuedMs, targetMs) {
  * @param {string} value
  */
 export function setAssistantText(value) {
-  setText(elements.assistantText, value ?? "");
+  if (!elements.assistantText) return;
+  const next = value ?? "";
+  // Avoid DOM thrash when streaming identical content.
+  if (elements.assistantText.textContent === next) return;
+  elements.assistantText.textContent = next;
+  elements.assistantText.dataset.hasText = next ? "true" : "false";
 }
 
 /**
@@ -329,6 +497,46 @@ export function showNotice(message) {
 
 export function hideNotice() {
   showNotice("");
+}
+
+/**
+ * Show or hide the first-run setup wizard overlay.
+ * @param {boolean} open
+ */
+export function setSetupOpen(open) {
+  if (!elements.setupWizard) return;
+  elements.setupWizard.hidden = !open;
+  elements.setupWizard.dataset.open = String(!!open);
+  document.body.classList.toggle("setup-open", !!open);
+}
+
+/**
+ * Brief toast for background agent progress / results.
+ * @param {string} message
+ * @param {{ tone?: "info"|"ok"|"err", holdMs?: number }} [opts]
+ */
+export function showAgentToast(message, opts = {}) {
+  if (!elements.agentToast) return;
+  const holdMs = opts.holdMs ?? 4200;
+  elements.agentToast.textContent = message ?? "";
+  elements.agentToast.hidden = !message;
+  elements.agentToast.dataset.tone = opts.tone || "info";
+  clearTimeout(showAgentToast._timer);
+  if (message) {
+    showAgentToast._timer = setTimeout(() => {
+      if (elements.agentToast) elements.agentToast.hidden = true;
+    }, holdMs);
+  }
+}
+
+/**
+ * Toggle the right-side agent / evidence rail (minimal UI).
+ * @param {boolean} [force]
+ */
+export function setTaskRailVisible(force) {
+  const next = force ?? !document.body.classList.contains("show-rail");
+  document.body.classList.toggle("show-rail", next);
+  return next;
 }
 
 /**
@@ -519,9 +727,20 @@ export function renderTranscript(entries) {
     }
     node.dataset.role = entry.role;
     node.dataset.pending = String(entry.pending);
+    node.dataset.revision = String(entry.revision ?? 0);
     node.querySelector(".role").textContent =
       entry.role === "user" ? "You" : entry.role === "assistant" ? "Openlive" : "System";
-    node.querySelector(".bubble").textContent = entry.text;
+    const bubble = node.querySelector(".bubble");
+    if (bubble.textContent !== entry.text) {
+      bubble.textContent = entry.text;
+      if (entry.revised) {
+        bubble.classList.remove("bubble-revise");
+        // Force reflow so the animation restarts on successive revisions.
+        void bubble.offsetWidth;
+        bubble.classList.add("bubble-revise");
+        entry.revised = false;
+      }
+    }
   }
 
   for (const [id, node] of existing) {
@@ -549,6 +768,9 @@ export function renderTranscript(entries) {
   if (elements.transcriptClear) {
     elements.transcriptClear.disabled = entries.length === 0;
   }
+  if (elements.transcriptExport) {
+    elements.transcriptExport.disabled = entries.length === 0;
+  }
 }
 
 /**
@@ -574,6 +796,7 @@ export function renderVoiceList(voices, selectedId, onSelect) {
     const item = document.createElement("li");
     item.setAttribute("role", "option");
     item.dataset.voiceId = voice.id;
+    if (voice.family) item.dataset.family = voice.family;
     item.setAttribute("aria-selected", String(voice.id === selectedId));
     const glyph = document.createElement("span");
     glyph.className = "voice-glyph";
@@ -899,6 +1122,8 @@ export function setMotionReadout(scale) {
 export function setOnboardingOpen(open) {
   if (!elements.onboarding) return;
   elements.onboarding.dataset.open = String(open);
+  elements.onboarding.hidden = !open;
+  elements.onboarding.setAttribute("aria-hidden", String(!open));
 }
 
 /* ---------------------------------------------------------------------------

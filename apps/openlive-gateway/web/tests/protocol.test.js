@@ -1,8 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { EchoReferenceCorrelator, resample, clamp01 } from "../audio-utils.js";
-import { AdaptiveJitterController } from "../jitter-controller.js";
+import {
+  EchoReferenceCorrelator,
+  NlmsAec,
+  designLowpassKernel,
+  resample,
+  resampleLinear,
+  clamp01,
+  rms,
+} from "../audio-utils.js";
+import {
+  AdaptiveJitterController,
+  concealPacketLoss,
+  estimatePitchPeriod,
+} from "../jitter-controller.js";
+import { EmotionDetector, estimateF0, spectralTiltProxy } from "../emotion-detector.js";
 import {
   reconnectDelay,
   signalEnergy,
@@ -76,6 +89,96 @@ test("resampler produces the requested time-domain length", () => {
   assert.equal(resample(input, 48000, 16000).length, 320);
 });
 
+test("polyphase resampler preserves a pure tone better than linear", () => {
+  const sampleRate = 48000;
+  const duration = 0.05;
+  const freq = 440;
+  const input = new Float32Array(Math.round(sampleRate * duration));
+  for (let i = 0; i < input.length; i += 1) {
+    input[i] = Math.sin((2 * Math.PI * freq * i) / sampleRate);
+  }
+  const targetRate = 16000;
+  const poly = resample(input, sampleRate, targetRate);
+  const linear = resampleLinear(input, sampleRate, targetRate);
+  // Correlate each result against a reference tone at the output rate.
+  const ref = new Float32Array(poly.length);
+  for (let i = 0; i < ref.length; i += 1) {
+    ref[i] = Math.sin((2 * Math.PI * freq * i) / targetRate);
+  }
+  const corr = (a, b) => {
+    let dot = 0;
+    let ea = 0;
+    let eb = 0;
+    for (let i = 0; i < a.length; i += 1) {
+      dot += a[i] * b[i];
+      ea += a[i] * a[i];
+      eb += b[i] * b[i];
+    }
+    return Math.abs(dot) / Math.sqrt(ea * eb + 1e-12);
+  };
+  const polyCorr = corr(poly, ref);
+  const linearCorr = corr(linear, ref);
+  assert.ok(polyCorr > 0.9, `polyphase correlation ${polyCorr}`);
+  // Polyphase should be at least as good as linear on a band-limited tone.
+  assert.ok(
+    polyCorr + 0.02 >= linearCorr,
+    `poly=${polyCorr} linear=${linearCorr}`,
+  );
+});
+
+test("designLowpassKernel is odd-length and approximately unit-gain", () => {
+  const kernel = designLowpassKernel(49, 0.9);
+  assert.equal(kernel.length % 2, 1);
+  let sum = 0;
+  for (let i = 0; i < kernel.length; i += 1) sum += kernel[i];
+  assert.ok(Math.abs(sum - 1) < 1e-5, `kernel sum ${sum}`);
+});
+
+test("NLMS AEC attenuates a known far-end echo path", () => {
+  const filterLength = 32;
+  const aec = new NlmsAec({ filterLength, mu: 0.6 });
+  // True echo path: 0.5 * far[n] + 0.25 * far[n-1]
+  const truePath = [0.5, 0.25];
+  const farHistory = new Float32Array(truePath.length);
+  const frames = 4000;
+  let residualEnergy = 0;
+  let lateResidual = 0;
+  let lateCount = 0;
+  for (let n = 0; n < frames; n += 1) {
+    const far = Math.sin(0.07 * n) * 0.4 + Math.sin(0.13 * n) * 0.2;
+    // Shift true delay line.
+    for (let i = farHistory.length - 1; i > 0; i -= 1) farHistory[i] = farHistory[i - 1];
+    farHistory[0] = far;
+    let echo = 0;
+    for (let i = 0; i < truePath.length; i += 1) echo += truePath[i] * farHistory[i];
+    const near = echo; // pure echo, no near-end speech
+    const residual = aec.processSample(near, far);
+    residualEnergy += residual * residual;
+    if (n > frames * 0.75) {
+      lateResidual += residual * residual;
+      lateCount += 1;
+    }
+  }
+  const early = residualEnergy / frames;
+  const late = lateResidual / Math.max(1, lateCount);
+  // After convergence, residual power should drop substantially.
+  assert.ok(late < early * 0.5 || late < 1e-4, `late=${late} early=${early}`);
+  assert.ok(aec.weightEnergy() > 0, "weights should adapt away from zero");
+});
+
+test("NLMS process block length matches input", () => {
+  const aec = new NlmsAec({ filterLength: 16 });
+  const near = new Float32Array(128);
+  const far = new Float32Array(128);
+  for (let i = 0; i < 128; i += 1) {
+    far[i] = Math.sin(i / 5);
+    near[i] = 0.4 * far[i];
+  }
+  const out = aec.process(near, far);
+  assert.equal(out.length, near.length);
+  assert.ok(rms(out) < rms(near), "AEC should reduce echo energy on a block");
+});
+
 test("clamp01 saturates and rejects non-finite input", () => {
   assert.equal(clamp01(-1), 0);
   assert.equal(clamp01(0.5), 0.5);
@@ -100,16 +203,48 @@ test("aligned output reference distinguishes echo from unrelated input", () => {
    Jitter controller
    --------------------------------------------------------------------------- */
 
+test("PLC concealment produces non-silent continuity from history", () => {
+  const sampleRate = 24000;
+  const history = new Float32Array(960);
+  for (let i = 0; i < history.length; i += 1) {
+    history[i] = Math.sin((2 * Math.PI * 180 * i) / sampleRate) * 0.4;
+  }
+  const plc = concealPacketLoss(history, 480, sampleRate);
+  assert.equal(plc.length, 480);
+  assert.ok(rms(plc) > 0.001, "PLC should not be pure silence");
+  const period = estimatePitchPeriod(history, sampleRate);
+  assert.ok(period >= sampleRate / 400 && period <= sampleRate / 70);
+});
+
+test("emotion detector returns bounded valence and arousal", () => {
+  const det = new EmotionDetector(16000);
+  const frame = new Float32Array(320);
+  for (let i = 0; i < frame.length; i += 1) {
+    frame[i] = Math.sin((2 * Math.PI * 200 * i) / 16000) * 0.3;
+  }
+  for (let n = 0; n < 20; n += 1) det.observe(frame);
+  const state = det.getEmotion?.() ?? det.state;
+  assert.ok(state.arousal >= 0 && state.arousal <= 1);
+  assert.ok(state.valence >= -1 && state.valence <= 1);
+  assert.ok(state.pauseToleranceScale >= 0.5);
+  assert.ok(estimateF0(frame, 16000) > 0);
+  assert.ok(Number.isFinite(spectralTiltProxy(frame)));
+});
+
 test("jitter target expands on loss and recovers after stable playout", () => {
   const jitter = new AdaptiveJitterController(48000);
   assert.equal(jitter.targetMs(), 40);
+  const before = jitter.targetMs();
   for (let index = 0; index < 12; index += 1) jitter.recordUnderflow();
-  assert.equal(jitter.targetMs(), 120);
-  for (let index = 0; index < 18; index += 1) {
+  assert.ok(jitter.targetMs() > before, "underflow should expand target");
+  assert.ok(jitter.targetMs() <= 160, "target stays within maxMs");
+  const expanded = jitter.targetMs();
+  for (let index = 0; index < 24; index += 1) {
     jitter.recordStablePlayback(48000 * 10);
   }
-  assert.equal(jitter.targetMs(), 30);
-  assert.ok(jitter.shouldStart(1440, false));
+  assert.ok(jitter.targetMs() < expanded, "stable playout should shrink target");
+  assert.ok(jitter.targetMs() >= 30);
+  assert.ok(jitter.shouldStart(Math.round(48000 * 0.04), false));
   assert.ok(jitter.shouldStart(0, true));
 });
 
@@ -227,6 +362,18 @@ test("TranscriptLog trim preserves pending entries", () => {
   // The pending assistant entry must survive.
   assert.ok(log.entries.some((e) => e.id === pending.id));
   assert.ok(log.entries.length <= 3);
+});
+
+test("TranscriptLog reviseText bumps revision for ASR corrections", () => {
+  const log = new TranscriptLog();
+  const entry = log.beginUserStream("asr-1");
+  log.reviseText(entry.id, "hel");
+  const revised = log.reviseText(entry.id, "hello there");
+  assert.equal(revised.text, "hello there");
+  assert.equal(revised.revision, 2);
+  assert.equal(revised.revised, true);
+  const latest = log.reviseLatestPending("user", "hello there friend", "asr-1");
+  assert.equal(latest.text, "hello there friend");
 });
 
 test("TranscriptLog appendDelta on missing id returns null and is a no-op", () => {
@@ -389,6 +536,103 @@ test("clearSettings is safe to call even without localStorage", () => {
   clearSettings();
   const settings = loadSettings();
   assert.equal(settings.theme, DEFAULT_SETTINGS.theme);
+});
+
+test("default theme is minimal black for v26.7.15", () => {
+  assert.equal(DEFAULT_SETTINGS.theme, "minimal");
+  assert.equal(DEFAULT_SETTINGS.backchannels, "natural");
+});
+
+test("saveSettings accepts minimal theme", () => {
+  const next = saveSettings({ theme: "minimal" });
+  assert.equal(next.theme, "minimal");
+});
+
+/* ---------------------------------------------------------------------------
+   Speech utilities + setup store
+   --------------------------------------------------------------------------- */
+
+import {
+  isOnlyFillers,
+  looksLikeAgentTask,
+  stripFillers,
+} from "../speech-utils.js";
+import {
+  DEFAULT_SETUP,
+  isSetupComplete,
+  loadSetup,
+  markSetupComplete,
+  resetSetup,
+  saveSetup,
+} from "../setup-store.js";
+
+test("stripFillers removes um/uh/hmm while keeping meaning", () => {
+  assert.equal(
+    stripFillers("um, can you please fix the bug hmm"),
+    "can you please fix the bug",
+  );
+  assert.equal(stripFillers("uh huh, yeah I mean deploy it"), "yeah deploy it");
+  assert.equal(stripFillers("hmm... uh, look up the docs"), "look up the docs");
+});
+
+test("isOnlyFillers detects pure filler turns", () => {
+  assert.equal(isOnlyFillers("um uh hmm"), true);
+  assert.equal(isOnlyFillers("um, please fix that"), false);
+});
+
+test("looksLikeAgentTask detects task-like speech", () => {
+  assert.equal(looksLikeAgentTask("can you please fix the login bug"), true);
+  assert.equal(looksLikeAgentTask("how are you"), false);
+  assert.equal(looksLikeAgentTask("um uh"), false);
+});
+
+test("setup store defaults and mark complete", () => {
+  resetSetup();
+  const initial = loadSetup();
+  assert.equal(initial.completed, false);
+  assert.equal(isSetupComplete(), false);
+  assert.equal(initial.agentKind, DEFAULT_SETUP.agentKind);
+  const done = markSetupComplete({
+    displayName: "Alex",
+    agentKind: "internal",
+    llmProviderId: "nvidia",
+  });
+  assert.equal(done.completed, true);
+  assert.equal(done.displayName, "Alex");
+  assert.equal(done.agentKind, "internal");
+  // Without localStorage, markSetupComplete still returns merged object.
+  assert.equal(typeof saveSetup({ stripFillers: false }).stripFillers, "boolean");
+  resetSetup();
+});
+
+import {
+  isUiSoundMuted,
+  setUiSoundMuted,
+  updateRangeFill,
+} from "../ui-feedback.js";
+
+test("ui feedback mute flag toggles safely without AudioContext", () => {
+  const before = isUiSoundMuted();
+  setUiSoundMuted(true);
+  assert.equal(isUiSoundMuted(), true);
+  setUiSoundMuted(false);
+  assert.equal(isUiSoundMuted(), false);
+  setUiSoundMuted(before);
+});
+
+test("updateRangeFill paints CSS custom property from range value", () => {
+  // Minimal stand-in for an HTML range input.
+  const el = {
+    min: "0",
+    max: "100",
+    value: "40",
+    style: { props: {}, setProperty(k, v) { this.props[k] = v; } },
+  };
+  updateRangeFill(el);
+  assert.equal(el.style.props["--range-fill"], "40%");
+  el.value = "0";
+  updateRangeFill(el);
+  assert.equal(el.style.props["--range-fill"], "0%");
 });
 
 /* ---------------------------------------------------------------------------

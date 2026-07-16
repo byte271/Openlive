@@ -1,22 +1,14 @@
 /*
- * OpenLive 26.7.14.1 — Signal Desk shell controller.
+ * Openlive 26.7.15 — Signal Desk shell controller.
  * Design contract: operator-console clarity, truthful state, explicit consent,
  * and no synthetic benchmark claims. This module never starts media capture.
  */
 
 import { buildScenarioSuite, SCENARIO_DEFINITIONS } from "./scenario-suite.js";
+import { bindLanguageControls } from "./language.js";
 import { escapeHtml } from "./task-orchestrator.js";
 
 const MEMORY_KEY = "openlive:v2:memory-scope";
-const LANGUAGE_KEY = "openlive:v2:language";
-const LANGUAGE_OPTIONS = [
-  { id: "auto", label: "Auto · EN" },
-  { id: "en", label: "English · EN" },
-  { id: "es", label: "Español · ES" },
-  { id: "fr", label: "Français · FR" },
-  { id: "de", label: "Deutsch · DE" },
-  { id: "ja", label: "日本語 · JA" },
-];
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -90,24 +82,15 @@ function initializeMemory() {
   });
 }
 
-function setLanguage(id, announce = false) {
-  const option = LANGUAGE_OPTIONS.find((entry) => entry.id === id) ?? LANGUAGE_OPTIONS[0];
-  localStorage.setItem(LANGUAGE_KEY, option.id);
-  const value = $("#languageValue");
-  if (value) value.textContent = option.label;
-  $("#languageControl")?.setAttribute("aria-label", `Language mode: ${option.label}`);
-  window.dispatchEvent(
-    new CustomEvent("openlive:language", { detail: { language: option.id } }),
-  );
-  if (announce) emitEvidence("Language preference changed", option.label, "cyan");
-}
-
 function initializeLanguage() {
-  setLanguage(localStorage.getItem(LANGUAGE_KEY) ?? "auto");
-  $("#languageControl")?.addEventListener("click", () => {
-    const current = localStorage.getItem(LANGUAGE_KEY) ?? "auto";
-    const index = LANGUAGE_OPTIONS.findIndex((entry) => entry.id === current);
-    setLanguage(LANGUAGE_OPTIONS[(index + 1) % LANGUAGE_OPTIONS.length].id, true);
+  try {
+    bindLanguageControls();
+  } catch (err) {
+    console.warn("Language controls failed to bind:", err);
+  }
+  window.addEventListener("openlive:language", (event) => {
+    const label = event.detail?.language || "auto";
+    emitEvidence("Language preference changed", label, "cyan");
   });
 }
 

@@ -1,3 +1,6 @@
+/**
+ * OpenLive 26.7.15 — binary PCM framing + control protocol helpers.
+ */
 export const PROTOCOL_VERSION = "1.0";
 
 const HEADER_BYTES = 60;

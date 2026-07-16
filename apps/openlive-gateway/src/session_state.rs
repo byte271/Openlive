@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
+    sync::atomic::{AtomicU64, Ordering},
     time::Instant,
 };
 
@@ -179,7 +180,21 @@ impl RepairContext {
 /// does not supply one. Chosen so a typical voice user has time to see the
 /// "Acknowledged" badge and the provider has room to complete a tool call
 /// without the gateway racing to abort.
+///
+/// Overridable at process start via `--task-deadline-ms` / `set_default_task_deadline_ms`.
 pub(crate) const DEFAULT_TASK_DEADLINE_MS: u64 = 45_000;
+
+static TASK_DEADLINE_MS: AtomicU64 = AtomicU64::new(DEFAULT_TASK_DEADLINE_MS);
+
+/// Install the process-wide default task deadline (milliseconds). `0` means
+/// “no implicit deadline” — admit will still accept an explicit client value.
+pub(crate) fn set_default_task_deadline_ms(ms: u64) {
+    TASK_DEADLINE_MS.store(ms, Ordering::Relaxed);
+}
+
+pub(crate) fn default_task_deadline_ms() -> u64 {
+    TASK_DEADLINE_MS.load(Ordering::Relaxed)
+}
 
 /// How long the gateway keeps buffered outcomes for resume after a client
 /// disconnect. Past this window, the gateway drops buffered events to bound
@@ -312,7 +327,15 @@ impl TaskOrchestrator {
         {
             return None;
         }
-        let deadline_ms = request.deadline_ms.unwrap_or(now_ms + DEFAULT_TASK_DEADLINE_MS);
+        let default_deadline = default_task_deadline_ms();
+        let deadline_ms = request.deadline_ms.unwrap_or_else(|| {
+            if default_deadline == 0 {
+                // Far-future sentinel when operator disabled default deadlines.
+                now_ms.saturating_add(u64::from(u32::MAX))
+            } else {
+                now_ms.saturating_add(default_deadline)
+            }
+        });
         let mut warnings = Vec::new();
         if request
             .evidence_required

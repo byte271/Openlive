@@ -1,4 +1,6 @@
-# Runtime architecture
+# Runtime architecture (v26.7.15)
+
+Living companion: [`architecture-roadmap.md`](architecture-roadmap.md) · Release: [`release-26.7.15.md`](release-26.7.15.md)
 
 ## Two-plane model
 

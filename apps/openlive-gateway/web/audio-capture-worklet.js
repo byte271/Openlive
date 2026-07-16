@@ -1,3 +1,6 @@
+/**
+ * OpenLive 26.7.15 — capture worklet (20 ms frames).
+ */
 class OpenliveCaptureProcessor extends AudioWorkletProcessor {
   constructor() {
     super();

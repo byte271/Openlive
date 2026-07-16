@@ -149,7 +149,7 @@ async fn task_lifecycle_request_acknowledge_cancel_resume() {
         "capability",
         next_seq(),
         RealtimeEvent::CapabilityOffer(openlive_protocol::CapabilityOffer {
-            protocol_revision: 3,
+            protocol_revision: 4,
             client_id: "integration-test".to_owned(),
             requested_modalities: openlive_protocol::ModalityCapabilities {
                 input: vec![openlive_protocol::Modality::Audio, openlive_protocol::Modality::Text],
@@ -319,7 +319,7 @@ async fn deadline_expiry_emits_failure_outcome() {
         "capability",
         next_seq(),
         RealtimeEvent::CapabilityOffer(openlive_protocol::CapabilityOffer {
-            protocol_revision: 3,
+            protocol_revision: 4,
             client_id: "integration-test".to_owned(),
             requested_modalities: openlive_protocol::ModalityCapabilities {
                 input: vec![openlive_protocol::Modality::Audio],
@@ -404,7 +404,7 @@ async fn duplicate_task_id_is_rejected() {
         "capability",
         next_seq(),
         RealtimeEvent::CapabilityOffer(openlive_protocol::CapabilityOffer {
-            protocol_revision: 3,
+            protocol_revision: 4,
             client_id: "integration-test".to_owned(),
             requested_modalities: openlive_protocol::ModalityCapabilities {
                 input: vec![openlive_protocol::Modality::Audio],
@@ -516,7 +516,7 @@ async fn task_acknowledgement_latency_benchmark() {
         "capability",
         next_seq(),
         RealtimeEvent::CapabilityOffer(openlive_protocol::CapabilityOffer {
-            protocol_revision: 3,
+            protocol_revision: 4,
             client_id: "latency-bench".to_owned(),
             requested_modalities: openlive_protocol::ModalityCapabilities {
                 input: vec![openlive_protocol::Modality::Audio],

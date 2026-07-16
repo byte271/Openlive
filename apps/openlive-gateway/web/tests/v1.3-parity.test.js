@@ -1,10 +1,9 @@
 /**
- * Openlive 1.3 — tests for the gpt-live parity modules.
+ * OpenLive 26.7.15 — gpt-live parity module tests (historical suite name: v1.3).
  *
  * Covers: QuotaTracker, ToolCallLog, visual-cards factory functions,
- * and custom-instructions axes/composition. Settings-store now also
- * includes the v1.3 complexity/tone/layout fields, so those are
- * exercised here too.
+ * and custom-instructions axes/composition. Settings-store complexity/tone/layout
+ * fields are exercised here too.
  */
 
 import assert from "node:assert/strict";
@@ -63,7 +62,7 @@ test("settings store key is namespaced to v1.3", () => {
   // the version bump didn't break the load/save contract.
   clearSettings();
   const fresh = loadSettings();
-  assert.equal(fresh.theme, "aurora");
+  assert.equal(fresh.theme, "chatgpt");
 });
 
 /* ---------------------------------------------------------------------------

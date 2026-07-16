@@ -1,18 +1,24 @@
 import {
   EchoReferenceCorrelator,
+  NlmsAec,
   floatToPcm16,
   pcm16ToFloat,
   resample,
   rms,
 } from "./audio-utils.js";
+import { EmotionDetector } from "./emotion-detector.js";
 
 /**
- * Openlive 26.7.14.1 — AudioSession
+ * Openlive 26.7.15 — AudioSession
  *
  * Owns the AudioContext, the microphone capture worklet, the playback
  * worklet, and the output gain node. Bridges binary PCM frames between
  * the WebSocket and the worklets. Local-first interruption (the reversible
  * duck before any server round trip) lives here.
+ *
+ * Phase 1 client-side intelligence chain:
+ *   mic → RNNoise worklet → Silero VAD worklet → capture worklet
+ *   → NLMS AEC (main thread) → polyphase FIR resample → PCM16 wire
  *
  * The class is intentionally framework-agnostic: app.js wires it to the
  * WebSocket via the callbacks passed to the constructor.
@@ -40,6 +46,12 @@ export class AudioSession {
     this.locallyDucked = false;
     this.hardYielded = false;
     this.outputGainConnected = false;
+    /** Latest Silero-style speech probability from the VAD worklet. */
+    this.sileroSpeechProbability = null;
+    /** When true, RNNoise + Silero worklets are inserted in the capture graph. */
+    this.clientIntelligenceEnabled = true;
+    /** @type {import("./emotion-detector.js").EmotionState|null} */
+    this.emotion = null;
   }
 
   /**
@@ -61,10 +73,22 @@ export class AudioSession {
       "/audio-capture-worklet.js",
     );
     await this.captureModulePromise;
+
+    if (this.clientIntelligenceEnabled) {
+      this.rnnoiseModulePromise ??= this.audioContext.audioWorklet.addModule(
+        "/rnnoise-worklet.js",
+      );
+      this.sileroModulePromise ??= this.audioContext.audioWorklet.addModule(
+        "/silero-vad-worklet.js",
+      );
+      await Promise.all([this.rnnoiseModulePromise, this.sileroModulePromise]);
+    }
+
     this.microphoneStream = await navigator.mediaDevices.getUserMedia({
       audio: {
+        // Prefer software AEC/NS in our graph; keep browser AEC as a prior.
         echoCancellation: true,
-        noiseSuppression: true,
+        noiseSuppression: false,
         autoGainControl: true,
         channelCount: 1,
       },
@@ -79,8 +103,37 @@ export class AudioSession {
     );
     this.captureNode.port.onmessage = ({ data }) =>
       this.handleCaptureFrame(data);
-    source.connect(this.captureNode);
-    this.captureNode.connect(this.audioContext.destination);
+
+    let tail = source;
+    if (this.clientIntelligenceEnabled) {
+      this.rnnoiseNode = new AudioWorkletNode(
+        this.audioContext,
+        "openlive-rnnoise",
+      );
+      this.sileroNode = new AudioWorkletNode(
+        this.audioContext,
+        "openlive-silero-vad",
+      );
+      this.sileroNode.port.onmessage = ({ data }) => {
+        if (data?.type === "vad") {
+          this.sileroSpeechProbability = data.speechProbability;
+        }
+      };
+      source.connect(this.rnnoiseNode);
+      this.rnnoiseNode.connect(this.sileroNode);
+      tail = this.sileroNode;
+      this.callbacks.onTimeline?.(
+        "audio",
+        "Client intelligence chain active (RNNoise → Silero VAD → NLMS)",
+      );
+    }
+
+    tail.connect(this.captureNode);
+    // Keep the graph running without mic-monitor bleed: zero-gain sink.
+    this.silentSink ??= this.audioContext.createGain();
+    this.silentSink.gain.value = 0;
+    this.captureNode.connect(this.silentSink);
+    this.silentSink.connect(this.audioContext.destination);
     return this.audioContext.sampleRate;
   }
 
@@ -91,10 +144,19 @@ export class AudioSession {
   stopMicrophone() {
     this.microphoneStream?.getTracks().forEach((track) => track.stop());
     this.captureSource?.disconnect();
+    this.rnnoiseNode?.disconnect();
+    this.sileroNode?.disconnect();
     this.captureNode?.disconnect();
+    this.silentSink?.disconnect();
     this.microphoneStream = undefined;
     this.captureSource = undefined;
+    this.rnnoiseNode = undefined;
+    this.sileroNode = undefined;
     this.captureNode = undefined;
+    this.sileroSpeechProbability = null;
+    this.nlmsAec?.reset();
+    this.emotionDetector?.reset();
+    this.emotion = null;
   }
 
   /**
@@ -204,6 +266,16 @@ export class AudioSession {
     this.echoCorrelator ??= new EchoReferenceCorrelator(
       this.audioContext.sampleRate,
     );
+    // ~16 ms filter at 48 kHz covers short acoustic paths; longer rooms
+    // still benefit via the delay line memory across frames.
+    this.nlmsAec ??= new NlmsAec({
+      filterLength: Math.min(
+        512,
+        Math.max(128, Math.round(this.audioContext.sampleRate * 0.016)),
+      ),
+      mu: 0.35,
+    });
+    this.emotionDetector ??= new EmotionDetector(this.audioContext.sampleRate);
   }
 
   ensureOutputGain() {
@@ -234,11 +306,42 @@ export class AudioSession {
   }
 
   handleCaptureFrame({ samples: buffer, endFrame }) {
-    const samples = new Float32Array(buffer);
-    const speechProbability = this.estimateSpeech(samples);
+    let samples = new Float32Array(buffer);
+
+    // NLMS adaptive echo cancellation when far-end playback is active.
     const echoProbability = this.hasActiveOutput()
       ? this.echoCorrelator.estimate(samples, endFrame)
       : 0;
+    if (this.hasActiveOutput() && this.nlmsAec) {
+      const far = this.echoCorrelator.readAligned(
+        samples.length,
+        endFrame,
+        0,
+      );
+      if (far) {
+        samples = this.nlmsAec.process(samples, far);
+      } else {
+        // Still adapt toward silence far-end so weights don't freeze wrong.
+        samples = this.nlmsAec.process(samples, null);
+      }
+    }
+
+    this.emotion = this.emotionDetector?.observe(samples) ?? null;
+    const energySpeech = this.estimateSpeech(samples);
+    // Prefer Silero-style worklet score when available; blend with energy.
+    const silero = this.sileroSpeechProbability;
+    let speechProbability =
+      silero == null
+        ? energySpeech
+        : clampBlend(silero, energySpeech, 0.7);
+    // Mild arousal boost so animated speech is not under-detected.
+    if (this.emotion) {
+      speechProbability = clampBlend(
+        speechProbability,
+        Math.min(1, speechProbability + this.emotion.arousal * 0.12),
+        0.85,
+      );
+    }
     const targetSpeechProbability =
       speechProbability * (1 - echoProbability);
     this.callbacks.onInputActivity?.(
@@ -317,7 +420,11 @@ export class AudioSession {
 
   applyLocalInterruption(probability) {
     if (!this.hasActiveOutput()) return;
-    if (probability >= 0.62 && !this.locallyDucked) {
+    const bargeScale = this.emotion?.bargeInThresholdScale ?? 1;
+    const duckAt = 0.62 * bargeScale;
+    const unduckAt = 0.28 * bargeScale;
+    const resumeMs = Math.round(120 * (this.emotion?.pauseToleranceScale ?? 1));
+    if (probability >= duckAt && !this.locallyDucked) {
       clearTimeout(this.localResumeTimer);
       this.locallyDucked = true;
       this.setOutputGain(0.18, 0.02);
@@ -328,15 +435,20 @@ export class AudioSession {
       this.callbacks.onInterruption?.();
       return;
     }
-    if (probability <= 0.28 && this.locallyDucked && !this.hardYielded) {
+    if (probability <= unduckAt && this.locallyDucked && !this.hardYielded) {
       clearTimeout(this.localResumeTimer);
       this.localResumeTimer = setTimeout(() => {
         if (!this.hardYielded) {
           this.locallyDucked = false;
           this.setOutputGain(1, 0.06);
         }
-      }, 120);
+      }, resumeMs);
     }
+  }
+
+  /** Latest emotion snapshot for diagnostics / telemetry. */
+  getEmotion() {
+    return this.emotion;
   }
 
   hasActiveOutput() {
@@ -353,4 +465,43 @@ export class AudioSession {
     );
     this.callbacks.onGain(value);
   }
+
+  connectWebRtcTrack(track) {
+    this.ensureOutputGain();
+    const mediaStream = new MediaStream([track]);
+    this.webRtcSource = this.audioContext.createMediaStreamSource(mediaStream);
+    this.webRtcSource.connect(this.outputGain);
+
+    this.webRtcAnalyser = this.audioContext.createAnalyser();
+    this.webRtcAnalyser.fftSize = 256;
+    this.webRtcSource.connect(this.webRtcAnalyser);
+
+    this.webRtcLevelInterval = setInterval(() => {
+      const dataArray = new Float32Array(this.webRtcAnalyser.frequencyBinCount);
+      this.webRtcAnalyser.getFloatTimeDomainData(dataArray);
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        sum += dataArray[i] * dataArray[i];
+      }
+      this.playbackOutputLevel = Math.sqrt(sum / dataArray.length);
+      this.callbacks.onOutputLevel?.(this.playbackOutputLevel);
+    }, 20);
+  }
+
+  disconnectWebRtc() {
+    clearInterval(this.webRtcLevelInterval);
+    this.webRtcSource?.disconnect();
+    this.webRtcAnalyser?.disconnect();
+    this.webRtcSource = null;
+    this.webRtcAnalyser = null;
+  }
 }
+
+/** Weighted blend of two probabilities in [0, 1]. */
+function clampBlend(primary, secondary, primaryWeight) {
+  const w = Math.max(0, Math.min(1, primaryWeight));
+  const v = primary * w + secondary * (1 - w);
+  if (Number.isNaN(v)) return 0;
+  return Math.max(0, Math.min(1, v));
+}
+

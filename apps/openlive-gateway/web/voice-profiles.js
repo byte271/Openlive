@@ -1,5 +1,5 @@
 /**
- * Openlive 26.7.14.1 — voice-profiles.js
+ * Openlive 26.7.15 — voice-profiles.js
  *
  * Voice roster shown in the in-app voice picker. The provider manifest
  * (fetched from /v1/providers) is the authoritative source when present;
@@ -7,7 +7,10 @@
  * any provider that does not declare voices.
  *
  * Voices are presented in the AVM pattern: name + one-line descriptor.
- * The descriptors here are original Openlive copy — they do not mirror any
+ * Open-source Piper voice ids are first-class so operators can match
+ * openedai-speech / LocalAI / Piper HTTP servers without renaming.
+ *
+ * Descriptors are original Openlive copy — they do not mirror any
  * proprietary voice catalog.
  */
 
@@ -17,123 +20,180 @@
  * @property {string} name - Display name.
  * @property {string} description - One-line personality descriptor.
  * @property {string} glyph - Single-character glyph for the picker avatar.
+ * @property {string} [family] - Optional provenance tag (piper, open, mock).
  */
 
-/** @type {ReadonlyArray<VoiceProfile>} */
-export const OFFLINE_VOICES = Object.freeze([
+/**
+ * Piper / open neural voices (MIT/GPL model weights downloaded by the
+ * operator — OpenLive does not redistribute weights).
+ *
+ * @type {ReadonlyArray<VoiceProfile>}
+ */
+export const PIPER_VOICES = Object.freeze([
+  {
+    id: "en_US-lessac-medium",
+    name: "Lessac",
+    description: "Clear US English · Piper open neural voice.",
+    glyph: "L",
+    family: "piper",
+  },
+  {
+    id: "en_US-amy-medium",
+    name: "Amy",
+    description: "Warm and conversational · Piper.",
+    glyph: "Am",
+    family: "piper",
+  },
+  {
+    id: "en_US-ryan-high",
+    name: "Ryan",
+    description: "Lower, direct delivery · Piper high quality.",
+    glyph: "R",
+    family: "piper",
+  },
+  {
+    id: "en_US-joe-medium",
+    name: "Joe",
+    description: "Steady narrative tone · Piper.",
+    glyph: "J",
+    family: "piper",
+  },
+  {
+    id: "en_US-kathleen-low",
+    name: "Kathleen",
+    description: "Soft, measured · Piper low footprint.",
+    glyph: "K",
+    family: "piper",
+  },
+  {
+    id: "en_GB-alba-medium",
+    name: "Alba",
+    description: "British English · Piper.",
+    glyph: "Al",
+    family: "piper",
+  },
+]);
+
+/**
+ * Generic OpenAI-compatible voice ids kept for hosted cascade endpoints.
+ * @type {ReadonlyArray<VoiceProfile>}
+ */
+export const COMPAT_VOICES = Object.freeze([
   {
     id: "alloy",
     name: "Alloy",
-    description: "Neutral and even-handed.",
+    description: "Neutral cascade default (API-compatible id).",
     glyph: "A",
+    family: "compat",
   },
   {
     id: "aria",
     name: "Aria",
     description: "Warm and conversational.",
     glyph: "Ar",
+    family: "compat",
   },
   {
     id: "cove",
     name: "Cove",
     description: "Composed and direct.",
     glyph: "C",
+    family: "compat",
   },
   {
     id: "ember",
     name: "Ember",
     description: "Confident and optimistic.",
     glyph: "E",
+    family: "compat",
   },
   {
     id: "juniper",
     name: "Juniper",
     description: "Open and upbeat.",
     glyph: "J",
+    family: "compat",
   },
   {
     id: "maple",
     name: "Maple",
     description: "Cheerful and grounded.",
     glyph: "M",
+    family: "compat",
   },
   {
     id: "sage",
     name: "Sage",
     description: "Thoughtful and measured.",
     glyph: "S",
+    family: "compat",
   },
   {
     id: "vale",
     name: "Vale",
     description: "Calm and attentive.",
     glyph: "V",
+    family: "compat",
   },
 ]);
 
-/**
- * Default voice used when no preference is persisted and the provider
- * manifest does not nominate one. Kept as `alloy` for cross-provider
- * compatibility — most OpenAI-compatible endpoints accept it.
- */
-export const DEFAULT_VOICE_ID = "alloy";
+/** Offline roster: Piper-first, then API-compatible fallbacks. */
+export const OFFLINE_VOICES = Object.freeze([...PIPER_VOICES, ...COMPAT_VOICES]);
 
 /**
- * Resolve the effective voice roster for the picker.
- *
- * @param {Array<{id: string, label?: string, description?: string}> | null | undefined} manifestVoices
+ * Default voice. Prefer Piper Lessac for open stacks; cascade servers that
+ * only accept `alloy` still work when the user picks a compat voice.
+ */
+export const DEFAULT_VOICE_ID = "en_US-lessac-medium";
+
+/**
+ * @param {Array<{id?: string, name?: string, label?: string, description?: string, glyph?: string}>|null|undefined} manifestVoices
  * @returns {VoiceProfile[]}
  */
 export function resolveVoices(manifestVoices) {
   if (!Array.isArray(manifestVoices) || manifestVoices.length === 0) {
     return [...OFFLINE_VOICES];
   }
-  return manifestVoices.map((voice) => ({
-    id: voice.id,
-    name: voice.label ?? voice.id,
-    description: voice.description ?? "Provider voice.",
-    glyph: glyphFor(voice.label ?? voice.id),
-  }));
+  return manifestVoices.map((entry, index) => {
+    const id = typeof entry.id === "string" && entry.id ? entry.id : `voice-${index}`;
+    const known = OFFLINE_VOICES.find((v) => v.id === id);
+    const displayName =
+      (typeof entry.name === "string" && entry.name) ||
+      (typeof entry.label === "string" && entry.label) ||
+      known?.name ||
+      id;
+    return {
+      id,
+      name: displayName,
+      description: entry.description || known?.description || "Provider voice.",
+      glyph: entry.glyph || known?.glyph || id.slice(0, 2).toUpperCase(),
+      family: known?.family || "provider",
+    };
+  });
 }
 
 /**
- * Find a voice by id. Falls back to the default voice if not found, then
- * to the first available voice if even the default is missing.
- *
- * @param {VoiceProfile[]} voices
- * @param {string | null | undefined} id
+ * @param {ReadonlyArray<VoiceProfile>} voices
+ * @param {string|null|undefined} preferredId
  * @returns {VoiceProfile}
  */
-export function selectVoice(voices, id) {
-  if (id) {
-    const match = voices.find((voice) => voice.id === id);
+export function selectVoice(voices, preferredId) {
+  if (!voices.length) {
+    return {
+      id: DEFAULT_VOICE_ID,
+      name: "Lessac",
+      description: "Clear US English · Piper open neural voice.",
+      glyph: "L",
+      family: "piper",
+    };
+  }
+  if (preferredId) {
+    const match = voices.find((v) => v.id === preferredId);
     if (match) return match;
   }
-  const fallback = voices.find((voice) => voice.id === DEFAULT_VOICE_ID);
-  return fallback ?? voices[0];
-}
-
-/**
- * Derive a one- or two-character glyph from a label. Uses the first
- * alphabetic character, plus a second if the label has an obvious word
- * boundary. This keeps the picker avatar readable for any voice name.
- *
- * @param {string} label
- * @returns {string}
- */
-function glyphFor(label) {
-  if (typeof label !== "string" || label.length === 0) return "?";
-  const cleaned = label.trim();
-  if (cleaned.length <= 2) return cleaned.toUpperCase();
-  // CamelCase or kebab-snake boundary → first letter of first two chunks.
-  const boundary = cleaned.match(/[ \-_]/);
-  if (boundary && boundary.index && boundary.index < cleaned.length - 1) {
-    return (cleaned[0] + cleaned[boundary.index + 1]).toUpperCase();
-  }
-  // CamelCase interior capital.
-  const interior = cleaned.slice(1).match(/[A-Z]/);
-  if (interior && interior.index !== undefined) {
-    return (cleaned[0] + cleaned[interior.index + 1]).toUpperCase();
-  }
-  return cleaned.slice(0, 1).toUpperCase();
+  const lessac = voices.find((v) => v.id === DEFAULT_VOICE_ID);
+  if (lessac) return lessac;
+  const alloy = voices.find((v) => v.id === "alloy");
+  if (alloy) return alloy;
+  return voices[0];
 }

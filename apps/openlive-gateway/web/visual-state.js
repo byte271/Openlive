@@ -1,5 +1,5 @@
 /**
- * Openlive 26.7.14.1 — visual-state.js
+ * Openlive 26.7.15 — visual-state.js
  *
  * Central registry of voice surface modes, their presentation copy, their
  * acoustic energy weights, and helpers used by both the UI layer and the
@@ -7,10 +7,9 @@
  * the diagnostics drawer, and the keyboard layer all agree on what each mode
  * means.
  *
- * The mode set is intentionally richer than v1.1: a dedicated YIELDING mode
- * separates "soft-ducked mid-response" from "interrupted with new user turn",
- * which matches how operators diagnose barge-in timing. All modes are
- * data-driven; nothing here touches the DOM directly.
+ * Copy is deliberately short and human so mode swaps feel continuous rather
+ * than like status-bar telemetry. All modes are data-driven; nothing here
+ * touches the DOM directly.
  */
 
 export const VoiceMode = Object.freeze({
@@ -30,70 +29,62 @@ export const VoiceMode = Object.freeze({
 const PRESENTATIONS = Object.freeze({
   idle: {
     label: "Ready when you are",
-    title: "Start a live conversation",
-    detail:
-      "Natural turn-taking, interruption, and continuous listening.",
+    title: "OpenLive",
+    detail: "Tap the mic or press Space to start.",
     tone: "neutral",
   },
   starting: {
-    label: "Opening the room",
-    title: "Getting everything ready",
-    detail: "Connecting audio and the realtime provider.",
+    label: "Connecting…",
+    title: "Opening channel",
+    detail: "Opening the voice channel.",
     tone: "neutral",
   },
   listening: {
     label: "Listening",
-    title: "Go ahead",
-    detail:
-      "You can pause naturally or speak over Openlive at any time.",
+    title: "Your turn",
+    detail: "I'm listening — jump in anytime.",
     tone: "input",
   },
   thinking: {
-    label: "Thinking",
-    title: "Following your thought",
-    detail:
-      "The audio channel stays open while the response takes shape.",
+    label: "Looking it up",
+    title: "One moment",
+    detail: "Checking that for you — keep talking if you want.",
     tone: "neutral",
   },
   speaking: {
     label: "Speaking",
-    title: "Openlive is responding",
-    detail:
-      "Interrupt naturally—the response should yield without losing context.",
+    title: "Responding",
+    detail: "Talk over me anytime — I'll stop.",
     tone: "output",
   },
   yielding: {
     label: "Yielding",
-    title: "Softly stepping back",
-    detail:
-      "Output is ducked while you speak. Resume naturally or commit a new turn.",
+    title: "All yours",
+    detail: "You go — I'm listening.",
     tone: "input",
   },
   interrupted: {
-    label: "Yielding",
-    title: "I'm listening",
-    detail:
-      "The previous response is being stopped for your new turn.",
+    label: "Listening",
+    title: "Go ahead",
+    detail: "Interrupted — I'm with you.",
     tone: "input",
   },
   muted: {
-    label: "Microphone paused",
-    title: "You're muted",
-    detail: "Resume whenever you want to continue.",
+    label: "Muted",
+    title: "Mic paused",
+    detail: "Unmute when you're ready.",
     tone: "neutral",
   },
   reconnecting: {
-    label: "Connection interrupted",
-    title: "Rejoining the conversation",
-    detail:
-      "Your microphone stays ready while the realtime session reconnects.",
+    label: "Reconnecting…",
+    title: "Rejoining",
+    detail: "Holding the mic open while we rejoin.",
     tone: "warn",
   },
   connection_error: {
-    label: "Session ended",
+    label: "Disconnected",
     title: "Connection lost",
-    detail:
-      "End this conversation, then start again when the network is available.",
+    detail: "Start again when you're ready.",
     tone: "bad",
   },
   error: {

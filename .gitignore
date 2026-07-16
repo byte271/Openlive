@@ -1,3 +1,32 @@
 /target
+/data
 *.zip
 .DS_Store
+
+# Secrets & local env — never commit API keys
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+credentials.json
+.secrets/
+secrets/
+apikeys/
+api-keys/
+
+# Runtime / logs
+*.log
+tmp-*.log
+tmp-*.txt
+/tmp/
+
+# Editor / OS noise
+.idea/
+.vscode/
+*.swp
+*~
+Thumbs.db

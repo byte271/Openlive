@@ -14,11 +14,15 @@ use openlive_protocol::{
 use openlive_provider::{
     ProviderEmission, ProviderInput, ProviderOutput, ProviderSessionRequest, RealtimeProvider,
 };
-use openlive_runtime::{AnswerLeaseManager, ChronosConfig, SessionEngine};
+use openlive_runtime::{
+    AnswerLeaseManager, ChronosConfig, PersistedTask, SafetyDisposition, SessionEngine,
+    SessionStore, StreamingSafety,
+};
 use tokio::sync::mpsc::{self, error::TrySendError};
 use tracing::{info, warn};
 use uuid::Uuid;
 
+use crate::session_registry::SessionRegistry;
 use crate::session_state::{
     ActiveGeneration, ClientTimeline, LatencyTracker, PlayoutTracker, RepairContext, TelemetryGate,
     TaskOrchestrator, PendingOutcome,
@@ -47,6 +51,16 @@ struct SessionCoordinator {
     telemetry_gate: TelemetryGate,
     /// Phase 7: owns task lifecycle, evidence links, and resume buffering.
     task_orchestrator: TaskOrchestrator,
+    latest_user_semantic_completion: Option<f32>,
+    /// Latest finalized (or streaming) user transcript for CommitResponse.
+    /// Without this, prompt_hint was only the barge-in repair string (usually empty),
+    /// so the model never saw what the user said.
+    latest_user_text: String,
+    /// Optional durable store for resume envelopes + task snapshots.
+    store: Option<SessionStore>,
+    /// Per-generation streaming safety gate (reset on new generation).
+    safety: StreamingSafety,
+    safety_enabled: bool,
 }
 
 impl SessionCoordinator {
@@ -55,6 +69,8 @@ impl SessionCoordinator {
         outgoing: mpsc::Sender<ServerMessage>,
         provider_input: mpsc::Sender<ProviderInput>,
         provider_manifest: ProviderManifest,
+        store: Option<SessionStore>,
+        safety_enabled: bool,
     ) -> Self {
         let profile = openlive_protocol::InteractionProfile::default();
         Self {
@@ -74,6 +90,11 @@ impl SessionCoordinator {
             dropped_input_frames: 0,
             telemetry_gate: TelemetryGate::default(),
             task_orchestrator: TaskOrchestrator::new(),
+            latest_user_semantic_completion: None,
+            latest_user_text: String::new(),
+            store,
+            safety: StreamingSafety::with_defaults(),
+            safety_enabled,
         }
     }
 
@@ -141,6 +162,20 @@ impl SessionCoordinator {
             }
             RealtimeEvent::SessionResume(resume) => {
                 self.handle_session_resume(media_time_us, parent_event_id, resume)
+                    .await;
+            }
+            RealtimeEvent::UserTranscriptDelta(delta) => {
+                self.handle_user_transcript_delta(media_time_us, parent_event_id, delta)
+                    .await;
+            }
+            // Client-side barge-in (browser ASR heard user while assistant spoke).
+            RealtimeEvent::InteractionDecision(decision)
+                if matches!(
+                    decision.action,
+                    InteractionAction::HardYield | InteractionAction::SoftDuck
+                ) =>
+            {
+                self.cancel_response(InteractionAction::HardYield, media_time_us)
                     .await;
             }
             RealtimeEvent::Ping => {
@@ -280,6 +315,15 @@ impl SessionCoordinator {
             .await;
             return;
         };
+        self.persist_task_snapshot(
+            acknowledgement.task_id,
+            "task",
+            "acknowledged",
+            acknowledgement.deadline_ms,
+            None,
+            None,
+            now_ms,
+        );
         let event = self
             .envelope(
                 "tasks",
@@ -318,6 +362,30 @@ impl SessionCoordinator {
             .envelope("tasks", media_time_us, RealtimeEvent::TaskOutcome(outcome))
             .with_parent(parent_event_id);
         self.send_and_buffer(event).await;
+    }
+
+    async fn handle_user_transcript_delta(
+        &mut self,
+        media_time_us: u64,
+        _parent_event_id: Uuid,
+        delta: openlive_protocol::UserTranscriptDelta,
+    ) {
+        let text = delta.text;
+        let score = check_semantic_completion(&text);
+        self.latest_user_semantic_completion = Some(score);
+        // Always keep the freshest transcript so StartResponse has a real prompt.
+        if !text.trim().is_empty() {
+            self.latest_user_text = text.trim().to_owned();
+        }
+        // Client ASR final → respond immediately (don't wait for long VAD silence).
+        // Skips empty/filler turns handled by the provider.
+        if delta.is_final
+            && self.active_generation.is_none()
+            && !self.latest_user_text.is_empty()
+            && score >= 0.35
+        {
+            self.start_response(media_time_us).await;
+        }
     }
 
     /// Replay buffered outcomes whose sequence is strictly greater than
@@ -538,9 +606,12 @@ impl SessionCoordinator {
                 return;
             }
         }
-        let endpointing =
-            self.endpointing
-                .observe(media_time_us, frame.frame_duration_ms, &analysis);
+        let endpointing = self.endpointing.observe_with_semantic(
+            media_time_us,
+            frame.frame_duration_ms,
+            &analysis,
+            self.latest_user_semantic_completion,
+        );
         let publish_telemetry = self
             .telemetry_gate
             .should_publish(media_time_us, endpointing.should_respond);
@@ -565,6 +636,7 @@ impl SessionCoordinator {
                     target_speaker_probability: analysis.target_speaker_probability,
                     turn_completion_confidence: endpointing.turn_completion_confidence,
                     prosodic_finality: endpointing.prosodic_finality,
+                    semantic_completion: self.latest_user_semantic_completion,
                 }),
             )
             .with_parent(parent_event_id);
@@ -618,8 +690,20 @@ impl SessionCoordinator {
             return;
         }
         self.endpointing.reset();
+        self.latest_user_semantic_completion = None;
         let generation_id = Uuid::new_v4();
-        let prompt_hint = self.repair.take_prompt();
+        // Prefer the user's words; append barge-in repair context when present.
+        let user_text = std::mem::take(&mut self.latest_user_text);
+        let repair = self.repair.take_prompt();
+        let prompt_hint = if repair.is_empty() {
+            user_text
+        } else if user_text.is_empty() {
+            repair
+        } else {
+            format!("{repair}\n\nUser said: {user_text}")
+        };
+        // Consume turn so silence endpointing can't re-fire the same utterance.
+        self.latest_user_semantic_completion = None;
         self.leases.issue(generation_id);
         let conversation_version = self
             .leases
@@ -751,21 +835,37 @@ impl SessionCoordinator {
         let mut emitted_event_ref: Option<RealtimeEvent> = None;
         match output {
             ProviderOutput::Event(event) => {
-                let event_id = Uuid::new_v4();
-                let envelope = EventEnvelope::new_with_id(
-                    event_id,
-                    self.session_id,
-                    provider_stream_id(&event),
-                    next_sequence(&mut self.sequence),
-                    media_time_us,
-                    event.clone(),
-                )
-                .with_generation(generation_id);
-                emitted_event_id = Some(event_id);
-                emitted_event_ref = Some(event);
-                self.send(envelope).await;
+                if self.safety_enabled {
+                    if let Some(handled) = self
+                        .apply_safety_to_event(event, generation_id, media_time_us)
+                        .await
+                    {
+                        if let Some((event_id, event_ref)) = handled {
+                            emitted_event_id = Some(event_id);
+                            emitted_event_ref = Some(event_ref);
+                        }
+                    }
+                } else {
+                    let event_id = Uuid::new_v4();
+                    let envelope = EventEnvelope::new_with_id(
+                        event_id,
+                        self.session_id,
+                        provider_stream_id(&event),
+                        next_sequence(&mut self.sequence),
+                        media_time_us,
+                        event.clone(),
+                    )
+                    .with_generation(generation_id);
+                    emitted_event_id = Some(event_id);
+                    emitted_event_ref = Some(event);
+                    self.send(envelope).await;
+                }
             }
             ProviderOutput::Audio(audio) => {
+                // Drop audio after safety intervene.
+                if self.safety_enabled && self.safety.intervened() {
+                    return;
+                }
                 self.playout.sent(media_time_us);
                 let packet = MediaPacket {
                     kind: MediaKind::OutputAudio,
@@ -940,6 +1040,18 @@ impl SessionCoordinator {
         };
         self.task_orchestrator
             .buffer_outbound(sequence, event_id, envelope_json.clone());
+        if let Some(store) = &self.store {
+            let recorded_at_ms = event.media_time_us / 1_000;
+            if let Err(error) = store.append_envelope(
+                self.session_id,
+                sequence,
+                event_id,
+                recorded_at_ms,
+                &envelope_json,
+            ) {
+                warn!(%error, "failed to persist outbound envelope");
+            }
+        }
         if self
             .outgoing
             .send(ServerMessage::RawText(envelope_json))
@@ -947,6 +1059,150 @@ impl SessionCoordinator {
             .is_err()
         {
             warn!("session writer closed");
+        }
+    }
+
+    /// Apply streaming safety to text events. Returns `None` when the event
+    /// was fully suppressed (holdback). Returns `Some(None)` when handled
+    /// without a single evidence-bearing emission, and
+    /// `Some(Some((id, event)))` when a transformed event was sent.
+    async fn apply_safety_to_event(
+        &mut self,
+        event: RealtimeEvent,
+        generation_id: Uuid,
+        media_time_us: u64,
+    ) -> Option<Option<(Uuid, RealtimeEvent)>> {
+        match event {
+            RealtimeEvent::OutputTextDelta(delta) => {
+                let decision = self.safety.observe_delta(&delta.delta);
+                match decision.disposition {
+                    SafetyDisposition::Holdback => Some(None),
+                    SafetyDisposition::Pass if decision.release.is_empty() => Some(None),
+                    SafetyDisposition::Pass => {
+                        let event = RealtimeEvent::OutputTextDelta(
+                            openlive_protocol::OutputTextDelta {
+                                delta: decision.release,
+                            },
+                        );
+                        let event_id = self
+                            .emit_provider_event(event.clone(), generation_id, media_time_us)
+                            .await;
+                        Some(Some((event_id, event)))
+                    }
+                    SafetyDisposition::Intervene => {
+                        let event = RealtimeEvent::OutputTextFinal(
+                            openlive_protocol::OutputTextFinal {
+                                text: decision.release,
+                            },
+                        );
+                        let event_id = self
+                            .emit_provider_event(event.clone(), generation_id, media_time_us)
+                            .await;
+                        let _ = self
+                            .provider_input
+                            .send(ProviderInput::CancelGeneration { generation_id })
+                            .await;
+                        Some(Some((event_id, event)))
+                    }
+                }
+            }
+            RealtimeEvent::OutputTextFinal(final_text) => {
+                let mut decision = self.safety.finalize();
+                if decision.disposition == SafetyDisposition::Pass
+                    && !decision.release.is_empty()
+                    && decision.release != final_text.text
+                {
+                    // Prefer held remainder when it differs; else use provider final.
+                    if decision.release.trim().is_empty() {
+                        decision.release = final_text.text;
+                    }
+                } else if decision.disposition == SafetyDisposition::Pass
+                    && decision.release.is_empty()
+                {
+                    decision.release = final_text.text;
+                }
+                if decision.disposition == SafetyDisposition::Intervene {
+                    let event = RealtimeEvent::OutputTextFinal(
+                        openlive_protocol::OutputTextFinal {
+                            text: decision.release,
+                        },
+                    );
+                    let event_id = self
+                        .emit_provider_event(event.clone(), generation_id, media_time_us)
+                        .await;
+                    return Some(Some((event_id, event)));
+                }
+                let event = RealtimeEvent::OutputTextFinal(openlive_protocol::OutputTextFinal {
+                    text: decision.release,
+                });
+                let event_id = self
+                    .emit_provider_event(event.clone(), generation_id, media_time_us)
+                    .await;
+                // Reset safety for the next generation.
+                self.safety = StreamingSafety::with_defaults();
+                Some(Some((event_id, event)))
+            }
+            other => {
+                let event_id = self
+                    .emit_provider_event(other.clone(), generation_id, media_time_us)
+                    .await;
+                if matches!(
+                    other,
+                    RealtimeEvent::ProviderState(ref state)
+                        if state.state == ProviderLifecycleState::Generating
+                ) {
+                    self.safety = StreamingSafety::with_defaults();
+                }
+                Some(Some((event_id, other)))
+            }
+        }
+    }
+
+    async fn emit_provider_event(
+        &mut self,
+        event: RealtimeEvent,
+        generation_id: Uuid,
+        media_time_us: u64,
+    ) -> Uuid {
+        let event_id = Uuid::new_v4();
+        let envelope = EventEnvelope::new_with_id(
+            event_id,
+            self.session_id,
+            provider_stream_id(&event),
+            next_sequence(&mut self.sequence),
+            media_time_us,
+            event,
+        )
+        .with_generation(generation_id);
+        self.send(envelope).await;
+        event_id
+    }
+
+    fn persist_task_snapshot(
+        &self,
+        task_id: Uuid,
+        intent: &str,
+        status: &str,
+        deadline_ms: u64,
+        generation_id: Option<Uuid>,
+        summary: Option<String>,
+        updated_at_ms: u64,
+    ) {
+        let Some(store) = &self.store else {
+            return;
+        };
+        let task = PersistedTask {
+            session_id: self.session_id,
+            task_id,
+            intent: intent.to_owned(),
+            status: status.to_owned(),
+            deadline_ms,
+            generation_id,
+            summary,
+            updated_at_ms,
+        };
+        if let Err(error) = store.upsert_task(&task) {
+            warn!(%error, "failed to persist task snapshot");
         }
     }
 
@@ -963,8 +1219,19 @@ impl SessionCoordinator {
     }
 }
 
-pub(crate) async fn run(socket: WebSocket, provider: Arc<dyn RealtimeProvider>) {
+pub(crate) struct SessionOptions {
+    pub store: Option<SessionStore>,
+    pub safety_enabled: bool,
+}
+
+pub(crate) async fn run(
+    socket: WebSocket,
+    provider: Arc<dyn RealtimeProvider>,
+    registry: Arc<SessionRegistry>,
+    options: SessionOptions,
+) {
     let session_id = Uuid::new_v4();
+    let provider_id = provider.manifest().id.clone();
     let provider_session = match provider
         .open_session(ProviderSessionRequest { session_id })
         .await
@@ -975,6 +1242,7 @@ pub(crate) async fn run(socket: WebSocket, provider: Arc<dyn RealtimeProvider>) 
             return;
         }
     };
+    registry.register(session_id, provider_id);
     let (provider_input, mut provider_output) = provider_session.into_parts();
     let mut transport = WebSocketTransport::start(socket);
     let outgoing_sender = transport.outgoing.clone();
@@ -998,6 +1266,8 @@ pub(crate) async fn run(socket: WebSocket, provider: Arc<dyn RealtimeProvider>) 
         outgoing_sender.clone(),
         provider_input,
         provider_manifest.clone(),
+        options.store,
+        options.safety_enabled,
     );
     coordinator.announce(provider_manifest).await;
     loop {
@@ -1034,6 +1304,7 @@ pub(crate) async fn run(socket: WebSocket, provider: Arc<dyn RealtimeProvider>) 
     drop(coordinator);
     drop(outgoing_sender);
     transport.finish().await;
+    registry.unregister(session_id);
     info!(%session_id, "realtime session closed");
 }
 
@@ -1048,7 +1319,9 @@ fn client_stream_id(event: &RealtimeEvent) -> Option<&'static str> {
     match event {
         RealtimeEvent::SessionConfigured(_)
         | RealtimeEvent::Ping
-        | RealtimeEvent::SessionResume(_) => Some("session"),
+        | RealtimeEvent::SessionResume(_)
+        | RealtimeEvent::UserTranscriptDelta(_)
+        | RealtimeEvent::InteractionDecision(_) => Some("session"),
         RealtimeEvent::CapabilityOffer(_) => Some("capability"),
         RealtimeEvent::VisualInput(_) => Some("visual"),
         RealtimeEvent::OutputAudioPlayed(_) => Some("assistant_playout"),
@@ -1057,6 +1330,36 @@ fn client_stream_id(event: &RealtimeEvent) -> Option<&'static str> {
         RealtimeEvent::TaskRequested(_) | RealtimeEvent::TaskCancel(_) => Some("tasks"),
         _ => None,
     }
+}
+
+fn check_semantic_completion(text: &str) -> f32 {
+    let trimmed = text.trim().to_lowercase();
+    if trimmed.is_empty() {
+        return 0.0;
+    }
+    let incomplete_trail = [
+        "and", "or", "but", "so", "because", "if", "when", "although", "though", "since",
+        "while", "unless", "until", "for", "as", "whereas", "lest", "than", "that", "whether",
+        "who", "which", "whose", "whom", "what", "where", "how", "why", "the", "a", "an", "my",
+        "your", "his", "her", "its", "our", "their", "this", "that", "these", "those"
+    ];
+    
+    let words: Vec<&str> = trimmed.split_whitespace().collect();
+    if words.is_empty() {
+        return 0.0;
+    }
+    
+    let last_word = words.last().copied().unwrap_or("");
+    if incomplete_trail.contains(&last_word) {
+        return 0.1;
+    }
+    
+    if trimmed.ends_with('.') || trimmed.ends_with('?') || trimmed.ends_with('!') {
+        return 0.95;
+    }
+    
+    let len_score = (words.len() as f32 / 5.0).clamp(0.0, 1.0);
+    len_score.mul_add(0.4, 0.5)
 }
 
 fn provider_stream_id(event: &RealtimeEvent) -> &'static str {
@@ -1072,6 +1375,7 @@ fn provider_stream_id(event: &RealtimeEvent) -> &'static str {
         RealtimeEvent::TaskAcknowledged(_)
         | RealtimeEvent::TaskOutcome(_) => "tasks",
         RealtimeEvent::EvidenceLink(_) => "evidence",
+        RealtimeEvent::VisualCard(_) => "visual",
         _ => "provider",
     }
 }

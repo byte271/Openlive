@@ -1,4 +1,4 @@
-# Provider adapter guide
+# Provider adapter guide (v26.7.15)
 
 ## Bidirectional session contract
 

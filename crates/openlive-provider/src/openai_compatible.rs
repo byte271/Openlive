@@ -16,6 +16,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::{
+    knowledge::{needs_deep_cognition, KnowledgeStore},
     openai_compatible_streaming::{
         stream_json_completion, stream_sse, CompletionEvent, PcmFramer, SpeechSegmenter,
     },
@@ -34,9 +35,14 @@ pub struct OpenAiCompatibleConfig {
     pub api_key: Option<String>,
     pub asr_model: String,
     pub llm_model: String,
+    /// Optional slower / deeper model for complex turns (GPT-Live-style
+    /// "slow thinking" delegation). Falls back to `llm_model` when unset.
+    pub deep_llm_model: Option<String>,
     pub tts_model: String,
     pub voice: String,
     pub system_prompt: String,
+    /// Optional directory of `.md`/`.txt` notes for pause-time retrieval.
+    pub knowledge_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for OpenAiCompatibleConfig {
@@ -46,9 +52,11 @@ impl Default for OpenAiCompatibleConfig {
             api_key: None,
             asr_model: "whisper-1".to_owned(),
             llm_model: "default".to_owned(),
+            deep_llm_model: None,
             tts_model: "tts-1".to_owned(),
             voice: "alloy".to_owned(),
             system_prompt: "Respond naturally and concisely in spoken language.".to_owned(),
+            knowledge_dir: None,
         }
     }
 }
@@ -57,6 +65,7 @@ impl Default for OpenAiCompatibleConfig {
 pub struct OpenAiCompatibleProvider {
     config: OpenAiCompatibleConfig,
     client: Client,
+    knowledge: KnowledgeStore,
 }
 
 impl OpenAiCompatibleProvider {
@@ -77,7 +86,16 @@ impl OpenAiCompatibleProvider {
             .timeout(Duration::from_secs(90))
             .build()
             .map_err(|error| ProviderError::InvalidConfiguration(error.to_string()))?;
-        Ok(Self { config, client })
+        let knowledge = config
+            .knowledge_dir
+            .as_ref()
+            .and_then(|dir| KnowledgeStore::load_dir(dir).ok())
+            .unwrap_or_else(KnowledgeStore::empty);
+        Ok(Self {
+            config,
+            client,
+            knowledge,
+        })
     }
 }
 
@@ -128,6 +146,10 @@ impl RealtimeProvider for OpenAiCompatibleProvider {
 
         tokio::spawn(async move {
             let mut audio = Vec::new();
+            // ~400 ms of prior-turn PCM prepended to each ASR window so clause
+            // boundaries are less likely to be cut mid-word (overlap revision).
+            let mut prior_overlap: Vec<u8> = Vec::new();
+            const OVERLAP_BYTES: usize = 16_000 * 2 / 5 * 2; // 400 ms @ 16 kHz s16 mono
             let mut active: Option<(Uuid, CancellationToken)> = None;
             while let Some(input) = input_receiver.recv().await {
                 match input {
@@ -142,13 +164,22 @@ impl RealtimeProvider for OpenAiCompatibleProvider {
                     } => {
                         cancel_active(&mut active);
                         let captured_audio = std::mem::take(&mut audio);
+                        let mut asr_audio =
+                            Vec::with_capacity(prior_overlap.len() + captured_audio.len());
+                        asr_audio.extend_from_slice(&prior_overlap);
+                        asr_audio.extend_from_slice(&captured_audio);
+                        prior_overlap = if captured_audio.len() > OVERLAP_BYTES {
+                            captured_audio[captured_audio.len() - OVERLAP_BYTES..].to_vec()
+                        } else {
+                            captured_audio.clone()
+                        };
                         let cancellation = CancellationToken::new();
                         active = Some((generation_id, cancellation.clone()));
                         tokio::spawn(provider.clone().run_pipeline(
                             output_sender.clone(),
                             generation_id,
                             conversation_version,
-                            captured_audio,
+                            asr_audio,
                             prompt_hint,
                             cancellation,
                         ));
@@ -205,14 +236,22 @@ impl OpenAiCompatibleProvider {
             return;
         }
 
+        let deep = needs_deep_cognition(&transcript);
         let task_id = Uuid::new_v4();
+        let kind = if deep && self.config.deep_llm_model.is_some() {
+            "deep_cognition"
+        } else if deep {
+            "cognition_complex"
+        } else {
+            "cognition"
+        };
         let _ = send(
             &sender,
             Some(generation_id),
             0,
             RealtimeEvent::TaskCreated(TaskCreated {
                 task_id,
-                kind: "cognition".to_owned(),
+                kind: kind.to_owned(),
                 conversation_version,
             }),
         )
@@ -321,12 +360,34 @@ impl OpenAiCompatibleProvider {
         sender: mpsc::Sender<CompletionEvent>,
         cancellation: CancellationToken,
     ) {
+        let deep = needs_deep_cognition(&transcript);
+        let model = if deep {
+            self.config
+                .deep_llm_model
+                .as_deref()
+                .unwrap_or(self.config.llm_model.as_str())
+        } else {
+            self.config.llm_model.as_str()
+        };
+        let knowledge_block = self.knowledge.inject_context(&transcript, 3);
+        let system_prompt = if let Some(ref inject) = knowledge_block {
+            format!("{}\n\n{inject}", self.config.system_prompt)
+        } else {
+            self.config.system_prompt.clone()
+        };
+        let system_prompt = if deep && self.config.deep_llm_model.is_some() {
+            format!(
+                "{system_prompt}\n\nYou are on the deep cognition path. Be thorough but still speakable."
+            )
+        } else {
+            system_prompt
+        };
         let request = ChatRequest {
-            model: &self.config.llm_model,
+            model,
             messages: [
                 ChatMessage {
                     role: "system",
-                    content: &self.config.system_prompt,
+                    content: &system_prompt,
                 },
                 ChatMessage {
                     role: "user",

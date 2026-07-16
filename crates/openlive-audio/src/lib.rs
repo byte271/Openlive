@@ -106,6 +106,17 @@ impl EndpointingTracker {
         frame_duration_ms: u16,
         analysis: &AudioAnalysis,
     ) -> EndpointingPrediction {
+        self.observe_with_semantic(media_time_us, frame_duration_ms, analysis, None)
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    pub fn observe_with_semantic(
+        &mut self,
+        media_time_us: u64,
+        frame_duration_ms: u16,
+        analysis: &AudioAnalysis,
+        semantic_completion: Option<f32>,
+    ) -> EndpointingPrediction {
         if analysis.speech_probability >= 0.62 {
             self.speech_started_us.get_or_insert(media_time_us);
             self.silence_started_us = None;
@@ -132,7 +143,7 @@ impl EndpointingTracker {
         self.silence_duration_ms =
             u32::try_from(media_time_us.saturating_sub(silence_start) / 1_000).unwrap_or(u32::MAX);
         self.update_energy_shape(analysis.rms);
-        self.finality_prediction()
+        self.finality_prediction(semantic_completion)
     }
 
     fn update_energy_shape(&mut self, rms: f32) {
@@ -145,14 +156,31 @@ impl EndpointingTracker {
     }
 
     #[allow(clippy::cast_precision_loss)]
-    fn finality_prediction(&self) -> EndpointingPrediction {
-        let silence_score = (self.silence_duration_ms as f32 / 520.0).clamp(0.0, 1.0);
-        let duration_score = (self.speech_duration_ms as f32 / 700.0).clamp(0.0, 1.0);
-        let energy_fall_score = (f32::from(self.falling_energy_frames) / 6.0).clamp(0.0, 1.0);
-        let turn_completion_confidence =
-            (silence_score * 0.72 + duration_score * 0.28).clamp(0.0, 1.0);
+    fn finality_prediction(&self, semantic_completion: Option<f32>) -> EndpointingPrediction {
+        // Snappier silence window (~320ms vs ~520ms) for lower first-token latency.
+        let silence_score = (self.silence_duration_ms as f32 / 320.0).clamp(0.0, 1.0);
+        let duration_score = (self.speech_duration_ms as f32 / 500.0).clamp(0.0, 1.0);
+        let energy_fall_score = (f32::from(self.falling_energy_frames) / 5.0).clamp(0.0, 1.0);
+
+        let turn_completion_confidence = if let Some(sem) = semantic_completion {
+            let silence_weight = if sem >= 0.8 { 0.4 } else { 0.68 };
+            let duration_weight = 1.0 - silence_weight;
+            (silence_score.mul_add(silence_weight, sem * 0.42) + duration_score * duration_weight)
+                .clamp(0.0, 1.0)
+        } else {
+            (silence_score * 0.7 + duration_score * 0.3).clamp(0.0, 1.0)
+        };
+
         let prosodic_finality = (silence_score * 0.55 + energy_fall_score * 0.45).clamp(0.0, 1.0);
-        let should_respond = turn_completion_confidence >= 0.74 && prosodic_finality >= 0.55;
+
+        let should_respond = if let Some(sem) = semantic_completion {
+            (turn_completion_confidence >= 0.68 && prosodic_finality >= 0.48)
+                || (sem >= 0.85 && self.silence_duration_ms >= 140)
+                || (sem >= 0.95 && self.silence_duration_ms >= 80)
+        } else {
+            turn_completion_confidence >= 0.7 && prosodic_finality >= 0.5
+        };
+
         EndpointingPrediction {
             speech_duration_ms: self.speech_duration_ms,
             silence_duration_ms: self.silence_duration_ms,
@@ -160,9 +188,9 @@ impl EndpointingTracker {
             prosodic_finality,
             should_respond,
             reason: if should_respond {
-                "speech ended with sufficient silence and falling energy".to_owned()
+                "speech ended with sufficient silence and falling energy or semantic finality".to_owned()
             } else {
-                "waiting for more silence or clearer prosodic finality".to_owned()
+                "waiting for more silence or clearer prosodic/semantic finality".to_owned()
             },
         }
     }
@@ -314,5 +342,41 @@ mod tests {
         assert!(tracker.observe(1_080_000, 20, &silence).should_respond);
         tracker.reset();
         assert!(!tracker.observe(1_100_000, 20, &silence).should_respond);
+    }
+
+    #[test]
+    fn semantic_endpointing_triggers_early() {
+        let mut tracker = EndpointingTracker::default();
+        let speech = AudioAnalysis {
+            speech_probability: 0.9,
+            echo_probability: 0.0,
+            target_speaker_probability: 0.9,
+            rms: 0.05,
+        };
+        let silence = AudioAnalysis {
+            speech_probability: 0.1,
+            echo_probability: 0.0,
+            target_speaker_probability: 0.1,
+            rms: 0.005,
+        };
+        for index in 0..25 {
+            tracker.observe_with_semantic(index * 20_000, 20, &speech, None);
+        }
+        // Silence starts ~500ms mark.
+        tracker.observe_with_semantic(500_000, 20, &silence, None);
+
+        // Very short silence + no semantic: stay quiet.
+        assert!(
+            !tracker
+                .observe_with_semantic(540_000, 20, &silence, None)
+                .should_respond
+        );
+
+        // High semantic completion may fire early (~80ms+) for snappy turns.
+        assert!(
+            tracker
+                .observe_with_semantic(600_000, 20, &silence, Some(0.95))
+                .should_respond
+        );
     }
 }

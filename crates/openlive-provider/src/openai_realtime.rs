@@ -134,6 +134,45 @@ impl RealtimeProvider for OpenAiRealtimeProvider {
         ));
         Ok(ProviderSession::new(input_sender, output_receiver))
     }
+
+    async fn create_client_secret(&self) -> Result<Option<String>, ProviderError> {
+        let client = reqwest::Client::new();
+        let api_key = match &self.config.api_key {
+            Some(key) => key,
+            None => return Ok(None),
+        };
+        let response = client
+            .post("https://api.openai.com/v1/realtime/client_secrets")
+            .bearer_auth(api_key)
+            .json(&serde_json::json!({
+                "model": self.config.model,
+                "voice": self.config.voice,
+            }))
+            .send()
+            .await
+            .map_err(|err| ProviderError::Unavailable(err.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Unavailable(format!(
+                "failed to create client secret: status={}, response={}",
+                status, text
+            )));
+        }
+
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|err| ProviderError::Unavailable(err.to_string()))?;
+
+        let secret = body
+            .pointer("/client_secret/value")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        Ok(secret)
+    }
 }
 
 struct ActiveResponse {

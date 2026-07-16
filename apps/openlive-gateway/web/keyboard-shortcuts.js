@@ -1,5 +1,5 @@
 /**
- * Openlive 26.7.14.1 — keyboard-shortcuts.js
+ * Openlive 26.7.15 — keyboard-shortcuts.js
  *
  * Centralized keyboard shortcut handler. Attaches a single keydown listener
  * and dispatches to a registry of named actions. Shortcuts are:

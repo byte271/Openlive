@@ -13,7 +13,8 @@ pub const PROTOCOL_VERSION: &str = "1.0";
 /// - 1: Capability offer/selected + visual input (Phase 6)
 /// - 2: Capability offer/selected + visual input (Phase 6 — published)
 /// - 3: Task & evidence orchestration + resume (Phase 7)
-pub const PROTOCOL_REVISION: u16 = 3;
+/// - 4: VisualCard + translation (26.7.15)
+pub const PROTOCOL_REVISION: u16 = 4;
 
 pub use media::{MediaKind, MediaPacket, MediaPacketError, PcmAudioFrame};
 
@@ -138,8 +139,28 @@ pub enum RealtimeEvent {
     SessionResume(SessionResume),
     LatencyMark(LatencyMark),
     Error(ErrorEvent),
+    UserTranscriptDelta(UserTranscriptDelta),
+    /// Rich inline card (weather, translation, tools surface, …).
+    VisualCard(VisualCard),
     Ping,
     Pong,
+}
+
+/// Structured visual card for the Live Desk transcript (GPT-Live-style).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct VisualCard {
+    pub kind: String,
+    pub title: String,
+    #[serde(default)]
+    pub fields: serde_json::Map<String, Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attribution: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UserTranscriptDelta {
+    pub text: String,
+    pub is_final: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -257,6 +278,8 @@ pub struct Observation {
     pub target_speaker_probability: f32,
     pub turn_completion_confidence: f32,
     pub prosodic_finality: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub semantic_completion: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -741,7 +764,7 @@ mod tests {
         );
         let encoded = serde_json::to_string(&envelope).expect("serialize capability offer");
         assert!(encoded.contains("\"protocol_version\":\"1.0\""));
-        assert!(encoded.contains("\"protocol_revision\":3"));
+        assert!(encoded.contains("\"protocol_revision\":4"));
     }
 
     // ────────────────────────────────────────────────────────────────────────

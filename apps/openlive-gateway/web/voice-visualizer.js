@@ -1,5 +1,5 @@
 /**
- * Openlive 26.7.14.1 — voice-visualizer.js
+ * Openlive 26.7.15 — voice-visualizer.js
  *
  * Multi-layer canvas voice orb. The composition is original Openlive
  * geometry — it does not reproduce any proprietary visual.
@@ -25,17 +25,15 @@
 import { signalEnergy, VoiceMode } from "./visual-state.js";
 
 const PALETTES = {
-  // v1.3 palette refinement: deeper saturated blues for IDLE/SPEAKING to
-  // evoke the AVM signature mood while keeping Openlive's original violet
-  // and cyan accents. All colors are original Openlive values.
-  [VoiceMode.IDLE]: ["#3d5bff", "#7d6bff", "#c8d4ff"],
-  [VoiceMode.STARTING]: ["#5a73ff", "#8a7dff", "#d4d8ff"],
-  [VoiceMode.LISTENING]: ["#3f9cff", "#5cd9ff", "#bdeaff"],
-  [VoiceMode.THINKING]: ["#7769ff", "#d17dff", "#f2ceff"],
-  [VoiceMode.SPEAKING]: ["#4a6dff", "#a55fff", "#e8c4ff"],
-  [VoiceMode.YIELDING]: ["#5eaeff", "#8aa0ff", "#d3edff"],
-  [VoiceMode.INTERRUPTED]: ["#54b9ff", "#7898ff", "#d3edff"],
-  [VoiceMode.MUTED]: ["#606574", "#8b91a1", "#d1d3da"],
+  // Soft blue–lavender sphere on pure black (original OpenLive geometry).
+  [VoiceMode.IDLE]: ["#5a7dff", "#8b9fff", "#e8ecff"],
+  [VoiceMode.STARTING]: ["#6b8cff", "#9b7bff", "#f0f2ff"],
+  [VoiceMode.LISTENING]: ["#4f8cff", "#7eb6ff", "#e6f2ff"],
+  [VoiceMode.THINKING]: ["#7a6dff", "#b08cff", "#f3e9ff"],
+  [VoiceMode.SPEAKING]: ["#5b7bff", "#9a70ff", "#f0e8ff"],
+  [VoiceMode.YIELDING]: ["#6a9dff", "#8aa8ff", "#e8f0ff"],
+  [VoiceMode.INTERRUPTED]: ["#5a9eff", "#8090ff", "#e8f2ff"],
+  [VoiceMode.MUTED]: ["#4a4a52", "#6e6e78", "#c8c8d0"],
   [VoiceMode.RECONNECTING]: ["#c68b58", "#a475ff", "#f5d4b1"],
   [VoiceMode.CONNECTION_ERROR]: ["#d9566d", "#f19a63", "#ffd0bc"],
   [VoiceMode.ERROR]: ["#d9566d", "#f19a63", "#ffd0bc"],
@@ -127,7 +125,8 @@ export class VoiceVisualizer {
     const { width, height } = this.canvas;
     const elapsed = (time - this.startTime) / 1000;
     const targetEnergy = signalEnergy(this.input, this.output, this.mode);
-    this.energy += (targetEnergy - this.energy) * 0.12;
+    // Snappier envelope so speech energy lands with less lag (GPT-Live feel).
+    this.energy += (targetEnergy - this.energy) * 0.16;
     this.bargeIntensity *= 0.88;
 
     context.clearRect(0, 0, width, height);
@@ -137,18 +136,151 @@ export class VoiceVisualizer {
 
     const palette = PALETTES[this.mode] ?? PALETTES[VoiceMode.IDLE];
     const motion = this.reducedMotion ? 0 : elapsed * this.motionScale;
-    const pulse = 1 + Math.sin(motion * 1.35) * 0.018 + this.energy * 0.08;
+    const pulse = 1 + Math.sin(motion * 1.2) * 0.016 + this.energy * 0.09;
 
-    this.drawAura(220 * pulse, motion, palette);
-    this.drawRibbons(196 * pulse, motion, palette);
-    this.drawBlob(178 * pulse, 0.075 + this.energy * 0.08 + this.bargeIntensity * 0.05, motion * 0.42, palette, 0.42);
-    this.drawBlob(160 * pulse, 0.095 + this.energy * 0.12, -motion * 0.58, palette, 0.58);
-    this.drawCore(135 * pulse, palette);
-    this.drawHighlights(142 * pulse, motion, palette);
-    this.drawRipples(time, palette);
+    const theme = document.documentElement.getAttribute("data-theme");
+    const softSphere = theme === "chatgpt" || theme === "minimal";
+    if (softSphere) {
+      this.drawChatGPTStyle(time, elapsed, palette, motion, pulse);
+    } else {
+      this.drawAura(220 * pulse, motion, palette);
+      this.drawRibbons(196 * pulse, motion, palette);
+      this.drawBlob(178 * pulse, 0.075 + this.energy * 0.08 + this.bargeIntensity * 0.05, motion * 0.42, palette, 0.42);
+      this.drawBlob(160 * pulse, 0.095 + this.energy * 0.12, -motion * 0.58, palette, 0.58);
+      this.drawCore(135 * pulse, palette);
+      this.drawHighlights(142 * pulse, motion, palette);
+      this.drawRipples(time, palette);
+    }
 
     context.restore();
     this.frame = requestAnimationFrame((nextTime) => this.draw(nextTime));
+  }
+
+  drawChatGPTStyle(time, elapsed, palette, motion, pulse) {
+    // 1. ChatGPT Backdrop Glow
+    this.drawChatGPTBackdrop(280 * pulse, motion, palette);
+    // 2. Soft fluid blobs
+    this.drawChatGPTBlob(200 * pulse, 0.06 + this.energy * 0.08 + this.bargeIntensity * 0.05, motion * 0.35, palette, 0.35);
+    this.drawChatGPTBlob(180 * pulse, 0.08 + this.energy * 0.12, -motion * 0.52, palette, 0.35);
+    // 3. Floating particle system
+    this.drawChatGPTParticles(time, palette);
+    // 4. Central Core
+    this.drawChatGPTCore(142 * pulse, palette);
+    // 5. Ripple effects
+    this.drawRipples(time, palette);
+  }
+
+  drawChatGPTBackdrop(radius, time, palette) {
+    const context = this.context;
+    const drift = Math.sin(time * 0.15) * 5;
+    const gradient = context.createRadialGradient(
+      drift,
+      -drift,
+      radius * 0.4,
+      0,
+      0,
+      radius,
+    );
+    gradient.addColorStop(0, withAlpha(palette[1], 0.08 + this.energy * 0.08));
+    gradient.addColorStop(0.5, withAlpha(palette[0], 0.04 + this.energy * 0.05));
+    gradient.addColorStop(1, withAlpha(palette[0], 0));
+    context.fillStyle = gradient;
+    context.beginPath();
+    context.arc(0, 0, radius, 0, Math.PI * 2);
+    context.fill();
+  }
+
+  drawChatGPTBlob(radius, distortion, phase, palette, alpha) {
+    const context = this.context;
+    const gradient = context.createRadialGradient(
+      -radius * 0.2,
+      -radius * 0.2,
+      radius * 0.1,
+      0,
+      0,
+      radius * 1.3,
+    );
+    gradient.addColorStop(0, withAlpha(palette[2], alpha + 0.12));
+    gradient.addColorStop(0.5, withAlpha(palette[1], alpha * 0.8));
+    gradient.addColorStop(1, withAlpha(palette[0], 0));
+    context.fillStyle = gradient;
+    context.beginPath();
+    const points = 100;
+    for (let index = 0; index <= points; index += 1) {
+      const angle = (index / points) * Math.PI * 2;
+      const wave =
+        Math.sin(angle * 4 + phase) * 0.45 +
+        Math.cos(angle * 2 - phase * 1.25) * 0.35 +
+        Math.sin(angle * 6 + phase * 0.75) * 0.2;
+      const jitter = this.bargeIntensity * Math.sin(angle * 17 + phase * 4) * 0.15;
+      const localRadius = radius * (1 + (wave + jitter) * distortion);
+      const x = Math.cos(angle) * localRadius;
+      const y = Math.sin(angle) * localRadius;
+      if (index === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    }
+    context.closePath();
+    context.fill();
+  }
+
+  drawChatGPTParticles(time, palette) {
+    const context = this.context;
+    if (!this.particles) {
+      this.particles = [];
+      for (let i = 0; i < 48; i++) {
+        this.particles.push({
+          angle: Math.random() * Math.PI * 2,
+          radius: 90 + Math.random() * 110,
+          speed: 0.05 + Math.random() * 0.15,
+          size: 1.2 + Math.random() * 2.2,
+          alpha: 0.15 + Math.random() * 0.45,
+          drift: (Math.random() - 0.5) * 0.05,
+        });
+      }
+    }
+    context.save();
+    for (const p of this.particles) {
+      p.angle += p.speed * (1 + this.energy * 2.5) * 0.03;
+      p.radius += p.drift * (1 + this.energy * 1.5);
+      if (p.radius > 260) {
+        p.radius = 90;
+        p.angle = Math.random() * Math.PI * 2;
+      } else if (p.radius < 80) {
+        p.radius = 240;
+      }
+      const x = Math.cos(p.angle) * p.radius;
+      const y = Math.sin(p.angle) * p.radius;
+      const size = p.size * (1 + this.energy * 1.8);
+      const alpha = p.alpha * (1 - (p.radius - 90) / 170);
+      context.fillStyle = withAlpha(palette[2], alpha);
+      context.beginPath();
+      context.arc(x, y, size, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.restore();
+  }
+
+  drawChatGPTCore(radius, palette) {
+    const context = this.context;
+    const gradient = context.createRadialGradient(
+      -radius * 0.15,
+      -radius * 0.15,
+      radius * 0.05,
+      0,
+      0,
+      radius,
+    );
+    gradient.addColorStop(0, withAlpha("#ffffff", 0.98));
+    gradient.addColorStop(0.3, withAlpha(palette[2], 0.85));
+    gradient.addColorStop(0.7, withAlpha(palette[1], 0.4));
+    gradient.addColorStop(1, withAlpha(palette[0], 0));
+    context.fillStyle = gradient;
+    context.shadowColor = withAlpha(palette[1], 0.45);
+    context.shadowBlur = 45 + this.energy * 45;
+    context.beginPath();
+    context.arc(0, 0, radius, 0, Math.PI * 2);
+    context.fill();
+    context.shadowBlur = 0;
   }
 
   drawAura(radius, time, palette) {

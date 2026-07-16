@@ -1,6 +1,10 @@
 # GPT-Live Benchmark — ChatGPT Advanced Voice Mode & OpenAI Realtime API vs. Openlive
 
-**Scope:** This document benchmarks Openlive v1.1 against "gpt-live" — interpreted as the full
+**Living status:** Parity tracking for the current tree is in
+[`gpt-live-parity.md`](gpt-live-parity.md) (**v26.7.15**). This file is the historical
+research notebook that drove the v1.1 → v1.2 → … → 26.7.15 roadmap.
+
+**Scope (original):** This document benchmarks Openlive v1.1 against "gpt-live" — interpreted as the full
 voice stack OpenAI ships: the consumer ChatGPT Advanced Voice Mode (AVM) and the underlying
 GPT-Live-1 / GPT-Realtime models exposed through the OpenAI Realtime API. The goal is to
 identify concrete gaps and prioritize the v1.2.0 roadmap.

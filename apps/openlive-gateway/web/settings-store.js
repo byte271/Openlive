@@ -1,5 +1,5 @@
 /**
- * Openlive 26.7.14.1 — settings-store.js
+ * Openlive 26.7.15 — settings-store.js
  *
  * Thin, typed wrapper over localStorage that persists user UI preferences
  * under a single namespaced key. All v1.2 keys live under `openlive.v1.2.*`.
@@ -12,11 +12,12 @@
 const KEY = "openlive.v1.3.settings";
 
 export const DEFAULT_SETTINGS = Object.freeze({
-  theme: "aurora",
+  // Minimal black is the default live surface (v26.7.15).
+  theme: "minimal",
   motionScale: 1,
-  showLatency: false,
+  showLatency: true,
   entryMode: "auto",
-  backchannels: "minimal",
+  backchannels: "natural",
   speedOverride: "auto",
   detailOverride: "auto",
   complexityOverride: "auto",
@@ -24,12 +25,14 @@ export const DEFAULT_SETTINGS = Object.freeze({
   voiceId: null,
   modeId: "open",
   layout: "focused",
-  onboardingDismissed: false,
+  onboardingDismissed: true,
 });
 
 const VALIDATORS = {
   theme: (value) =>
-    ["aurora", "graphite", "signal"].includes(value) ? value : DEFAULT_SETTINGS.theme,
+    ["minimal", "aurora", "graphite", "signal", "chatgpt"].includes(value)
+      ? value
+      : DEFAULT_SETTINGS.theme,
   motionScale: (value) => {
     const n = Number(value);
     return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : DEFAULT_SETTINGS.motionScale;

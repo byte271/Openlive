@@ -7,6 +7,7 @@ rust-version.workspace = true
 
 [dependencies]
 axum.workspace = true
+bytes.workspace = true
 clap.workspace = true
 futures-util.workspace = true
 openlive-audio.workspace = true
@@ -20,6 +21,7 @@ tower-http.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
+webrtc.workspace = true
 
 [dev-dependencies]
 openlive-provider = { workspace = true }

@@ -1,5 +1,15 @@
-import { AdaptiveJitterController } from "./jitter-controller.js";
+import {
+  AdaptiveJitterController,
+  concealPacketLoss,
+} from "./jitter-controller.js";
 
+/**
+ * OpenLive 26.7.15 — playback worklet (adaptive jitter + packet-loss concealment).
+ *
+ * On underflow while a generation is still streaming, synthesizes a short
+ * PLC frame from recent history instead of hard silence — closer to WebRTC
+ * Opus PLC behavior on the WebSocket PCM path.
+ */
 class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -18,6 +28,13 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
     this.reference = new Float32Array(this.referenceFrameSize);
     this.referenceOffset = 0;
     this.referenceStartFrame = 0;
+    // History for PLC (~40 ms).
+    this.history = new Float32Array(Math.round(sampleRate * 0.04));
+    this.historyWrite = 0;
+    this.historyFilled = 0;
+    this.plcRemaining = 0;
+    this.plcFrame = null;
+    this.plcOffset = 0;
     this.port.onmessage = ({ data }) => this.handleMessage(data);
   }
 
@@ -32,6 +49,7 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
       });
       this.queuedSamples += samples.length;
       this.underflowReported = false;
+      this.jitter.recordArrival(currentTime * 1000, 20);
       this.postBufferState();
       return;
     }
@@ -69,9 +87,11 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
     }
     this.queue = retained;
     this.completeGenerations.add(generationId);
+    this.plcRemaining = 0;
+    this.plcFrame = null;
     if (this.current?.generationId === generationId) {
       this.fadeGenerationId = generationId;
-      this.fadeTotal = Math.max(1, Math.round(sampleRate * fadeMs / 1000));
+      this.fadeTotal = Math.max(1, Math.round((sampleRate * fadeMs) / 1000));
       this.fadeRemaining = this.fadeTotal;
     } else {
       this.port.postMessage({ type: "canceled", generationId });
@@ -99,45 +119,19 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
     let writtenSamples = 0;
     let sumSquares = 0;
     for (let index = 0; index < output.length; index += 1) {
-      if (!this.current) {
-        this.current = this.queue.shift() ?? null;
-        if (!this.current) {
-          this.handleUnderflow();
-          break;
-        }
-        this.lastGenerationId = this.current.generationId;
-      }
-
-      let value = this.current.samples[this.current.offset];
-      if (this.fadeGenerationId === this.current.generationId) {
-        value *= this.fadeRemaining / this.fadeTotal;
-        this.fadeRemaining -= 1;
-        if (this.fadeRemaining <= 0) {
-          this.dropCanceledCurrent();
-          continue;
-        }
+      let value = this.nextSample();
+      if (value === null) {
+        this.handleUnderflow();
+        break;
       }
       output[index] = value;
+      this.pushHistory(value);
       sumSquares += value * value;
-      this.current.offset += 1;
-      this.queuedSamples = Math.max(0, this.queuedSamples - 1);
       writtenSamples += 1;
       wroteSamples = true;
-
-      if (this.current.offset >= this.current.samples.length) {
-        this.port.postMessage({
-          type: "played",
-          generationId: this.current.generationId,
-          mediaEndUs: this.current.mediaEndUs,
-        });
-        this.current = null;
-      }
     }
 
-    if (
-      wroteSamples &&
-      this.jitter.recordStablePlayback(writtenSamples)
-    ) {
+    if (wroteSamples && this.jitter.recordStablePlayback(writtenSamples)) {
       this.postBufferState();
     }
     if (wroteSamples) {
@@ -148,6 +142,64 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
     }
     this.captureReference(output);
     return true;
+  }
+
+  nextSample() {
+    // Drain active PLC tail first.
+    if (this.plcFrame && this.plcOffset < this.plcFrame.length) {
+      const v = this.plcFrame[this.plcOffset++];
+      this.plcRemaining = Math.max(0, this.plcRemaining - 1);
+      if (this.plcOffset >= this.plcFrame.length) {
+        this.plcFrame = null;
+        this.plcOffset = 0;
+      }
+      return v;
+    }
+
+    if (!this.current) {
+      this.current = this.queue.shift() ?? null;
+      if (!this.current) return null;
+      this.lastGenerationId = this.current.generationId;
+    }
+
+    let value = this.current.samples[this.current.offset];
+    if (this.fadeGenerationId === this.current.generationId) {
+      value *= this.fadeRemaining / this.fadeTotal;
+      this.fadeRemaining -= 1;
+      if (this.fadeRemaining <= 0) {
+        this.dropCanceledCurrent();
+        return 0;
+      }
+    }
+    this.current.offset += 1;
+    this.queuedSamples = Math.max(0, this.queuedSamples - 1);
+
+    if (this.current.offset >= this.current.samples.length) {
+      this.port.postMessage({
+        type: "played",
+        generationId: this.current.generationId,
+        mediaEndUs: this.current.mediaEndUs,
+      });
+      this.current = null;
+    }
+    return value;
+  }
+
+  pushHistory(sample) {
+    this.history[this.historyWrite] = sample;
+    this.historyWrite = (this.historyWrite + 1) % this.history.length;
+    this.historyFilled = Math.min(this.history.length, this.historyFilled + 1);
+  }
+
+  historySnapshot() {
+    const n = this.historyFilled;
+    const out = new Float32Array(n);
+    let idx = (this.historyWrite - n + this.history.length) % this.history.length;
+    for (let i = 0; i < n; i += 1) {
+      out[i] = this.history[idx];
+      idx = (idx + 1) % this.history.length;
+    }
+    return out;
   }
 
   captureReference(output) {
@@ -197,18 +249,42 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
   }
 
   handleUnderflow() {
-    this.started = false;
-    if (
+    // If generation still open, synthesize PLC instead of pure silence.
+    const stillStreaming =
       this.lastGenerationId &&
-      !this.completeGenerations.has(this.lastGenerationId) &&
-      !this.underflowReported
-    ) {
+      !this.completeGenerations.has(this.lastGenerationId);
+
+    if (stillStreaming && this.historyFilled > 32 && this.plcRemaining <= 0) {
+      const plcLen = Math.round(sampleRate * 0.02); // 20 ms
+      this.plcFrame = concealPacketLoss(
+        this.historySnapshot(),
+        plcLen,
+        sampleRate,
+      );
+      this.plcOffset = 0;
+      this.plcRemaining = plcLen * 3; // allow up to ~60 ms of PLC bursts
+      this.jitter.recordUnderflow();
+      if (!this.underflowReported) {
+        this.underflowReported = true;
+        this.port.postMessage({
+          type: "underflow",
+          generationId: this.lastGenerationId,
+          targetMs: this.jitter.targetMs(),
+          plc: true,
+        });
+      }
+      return;
+    }
+
+    this.started = false;
+    if (stillStreaming && !this.underflowReported) {
       this.jitter.recordUnderflow();
       this.underflowReported = true;
       this.port.postMessage({
         type: "underflow",
         generationId: this.lastGenerationId,
         targetMs: this.jitter.targetMs(),
+        plc: false,
       });
     }
     if (
@@ -228,7 +304,8 @@ class OpenlivePlaybackProcessor extends AudioWorkletProcessor {
     this.port.postMessage({
       type: "buffer",
       targetMs: this.jitter.targetMs(),
-      queuedMs: this.queuedSamples / sampleRate * 1000,
+      queuedMs: (this.queuedSamples / sampleRate) * 1000,
+      jitterMs: this.jitter.jitterMs,
     });
   }
 }
