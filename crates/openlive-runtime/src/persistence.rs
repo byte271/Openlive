@@ -1,8 +1,8 @@
 //! File-backed session persistence for task outcomes, evidence links, and
 //! resume buffers. Uses append-only JSONL under a configurable directory so
-//! the gateway stays dependency-light (no native SQLite linkage required).
+//! the gateway stays dependency-light (no native `SQLite` linkage required).
 //!
-//! Schema is intentionally SQLite-shaped so a future `rusqlite` backend can
+//! Schema is intentionally `SQLite`-shaped so a future `rusqlite` backend can
 //! replace the JSONL files without changing callers.
 
 use std::{
@@ -31,7 +31,7 @@ pub struct PersistedEnvelope {
     pub sequence: u64,
     pub event_id: Uuid,
     pub recorded_at_ms: u64,
-    /// Full EventEnvelope JSON for byte-stable resume replay.
+    /// Full `EventEnvelope` JSON for byte-stable resume replay.
     pub envelope_json: String,
 }
 
@@ -133,7 +133,7 @@ impl SessionStore {
         append_jsonl(&path, task)
     }
 
-    /// Latest snapshot per task_id for a session.
+    /// Latest snapshot per `task_id` for a session.
     ///
     /// # Errors
     /// Returns on IO or parse failure.

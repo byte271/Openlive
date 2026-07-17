@@ -24,6 +24,7 @@ pub struct PiperStatus {
 }
 
 /// Platform data directory: `%LOCALAPPDATA%\openlive\piper` or `~/.openlive/piper`.
+#[must_use]
 pub fn piper_data_dir() -> PathBuf {
     if let Ok(local) = std::env::var("LOCALAPPDATA") {
         return PathBuf::from(local).join("openlive").join("piper");
@@ -46,6 +47,7 @@ pub fn piper_model_path(dir: &Path, voice: &str) -> PathBuf {
     dir.join("models").join(format!("{voice}.onnx"))
 }
 
+#[must_use]
 pub fn piper_status(voice: &str) -> PiperStatus {
     let dir = piper_data_dir();
     let bin = resolve_piper_bin(&dir);
@@ -53,14 +55,11 @@ pub fn piper_status(voice: &str) -> PiperStatus {
     let bin_present = bin.is_file();
     let model_present = model.is_file();
     // Ready when binary + model exist; synthesize sets cwd for DLLs.
-    let dll_ok = bin
-        .parent()
-        .map(|p| {
-            p.join("onnxruntime.dll").is_file()
-                || p.join("espeak-ng.dll").is_file()
-                || p.join("piper_phonemize.dll").is_file()
-        })
-        .unwrap_or(false);
+    let dll_ok = bin.parent().is_some_and(|p| {
+        p.join("onnxruntime.dll").is_file()
+            || p.join("espeak-ng.dll").is_file()
+            || p.join("piper_phonemize.dll").is_file()
+    });
     let available = bin_present && model_present && dll_ok;
 
     let dir_s = dir.display().to_string();
@@ -106,7 +105,8 @@ echo "Place piper binary at: {bin_s}"
     let note = if available {
         "Piper is ready — OpenLive will use open-source neural TTS.".into()
     } else if !bin_present && !model_present {
-        "Piper binary and voice model are missing. Copy-paste the install command for your OS.".into()
+        "Piper binary and voice model are missing. Copy-paste the install command for your OS."
+            .into()
     } else if !bin_present {
         "Piper binary missing (model found). Run the install command.".into()
     } else {
@@ -156,7 +156,7 @@ pub fn resolve_piper_bin(data_dir: &Path) -> PathBuf {
     piper_bin_path(data_dir)
 }
 
-/// Synthesize PCM s16le mono via piper CLI. Returns (pcm_bytes, sample_rate) or error.
+/// Synthesize PCM s16le mono via piper CLI. Returns (`pcm_bytes`, `sample_rate`) or error.
 pub fn piper_synthesize(text: &str, voice: &str) -> Result<(Vec<u8>, u32), String> {
     let dir = piper_data_dir();
     let bin = resolve_piper_bin(&dir);

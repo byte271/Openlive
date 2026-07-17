@@ -1,6 +1,17 @@
+#![allow(
+    clippy::too_many_lines,
+    clippy::missing_errors_doc,
+    clippy::items_after_statements,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::too_many_arguments
+)]
+
 mod agent_class;
 mod agent_client;
 mod agent_pool;
+mod headless_browser;
 mod hybrid;
 mod knowledge;
 mod llm_bridge;
@@ -13,7 +24,6 @@ mod openai_compatible;
 mod openai_compatible_streaming;
 mod openai_realtime;
 mod openai_realtime_wire;
-mod headless_browser;
 mod pending_actions;
 mod piper_tts;
 mod pool_jobs;
@@ -35,27 +45,8 @@ pub use agent_pool::{
     derive_angles, pool_limits, run_pool, PoolAgentResult, PoolRequest, PoolResult, PoolTask,
     DEFAULT_POOL_SIZE, MAX_AGENTS,
 };
-pub use pending_actions::{
-    execute_approved, list_pending, peek as peek_pending, queue_delete_file, queue_write_file,
-    reject as reject_pending, PendingAction, PendingKind,
-};
-pub use pool_jobs::{
-    get_status as pool_job_status, run_pool_tracked, start_pool_job, PoolJobStatus,
-};
-pub use session_context::{
-    append_and_context as session_append_context, clear_session as clear_session_context,
-    context_only as session_context_only, session_stats,
-};
-pub use user_profile::{
-    add_fact as profile_add_fact, clear_facts as profile_clear_facts, clear_profile,
-    export_profile_json, load_profile, move_fact as profile_move_fact, patch_profile,
-    profile_context_line, profile_file_path, profile_setup_hints,
-    remove_fact_at as profile_remove_fact_at, remove_fact_text as profile_remove_fact_text,
-    reorder_facts as profile_reorder_facts, save_profile, set_display_name,
-    set_preferred_language, update_fact_at as profile_update_fact_at, UserProfile,
-};
 pub use headless_browser::{
-    find_browser_binary, headless_browser_status, headless_browse, headless_pdf,
+    find_browser_binary, headless_browse, headless_browser_status, headless_pdf,
     headless_screenshot, list_lab_media, read_lab_media_base64, HeadlessBrowserStatus,
     HeadlessPdfResult, HeadlessScreenshotResult, LabMediaItem,
 };
@@ -72,16 +63,38 @@ pub use mock::{preview_voice_pcm, MockDuplexProvider, VOICE_PRESETS};
 pub use moshi::{MoshiConfig, MoshiProvider};
 pub use openai_compatible::{OpenAiCompatibleConfig, OpenAiCompatibleProvider};
 pub use openai_realtime::{OpenAiRealtimeConfig, OpenAiRealtimeProvider};
-pub use piper_tts::{piper_data_dir, piper_status, piper_synthesize, PiperStatus, DEFAULT_PIPER_VOICE};
+pub use pending_actions::{
+    execute_approved, list_pending, peek as peek_pending, queue_delete_file, queue_write_file,
+    reject as reject_pending, PendingAction, PendingKind,
+};
+pub use piper_tts::{
+    piper_data_dir, piper_status, piper_synthesize, PiperStatus, DEFAULT_PIPER_VOICE,
+};
+pub use pool_jobs::{
+    get_status as pool_job_status, run_pool_tracked, start_pool_job, PoolJobStatus,
+};
 pub use sandbox::{
     delete_file as sandbox_delete_file, ensure_sandbox, list_files as sandbox_list_files,
-    read_file as sandbox_read_file, sandbox_status, write_file as sandbox_write_file, SandboxStatus,
+    read_file as sandbox_read_file, sandbox_status, write_file as sandbox_write_file,
+    SandboxStatus,
+};
+pub use session_context::{
+    append_and_context as session_append_context, clear_session as clear_session_context,
+    context_only as session_context_only, session_stats,
 };
 pub use tools::{
     browse_site, browse_url, save_lab_note, try_builtin_tools, web_search, web_search_with_sources,
     Citation,
 };
 pub use typo::correct_typos;
+pub use user_profile::{
+    add_fact as profile_add_fact, clear_facts as profile_clear_facts, clear_profile,
+    export_profile_json, load_profile, move_fact as profile_move_fact, patch_profile,
+    profile_context_line, profile_file_path, profile_setup_hints,
+    remove_fact_at as profile_remove_fact_at, remove_fact_text as profile_remove_fact_text,
+    reorder_facts as profile_reorder_facts, save_profile, set_display_name, set_preferred_language,
+    update_fact_at as profile_update_fact_at, UserProfile,
+};
 
 #[derive(Debug, Clone)]
 pub struct ProviderSessionRequest {

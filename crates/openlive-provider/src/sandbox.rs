@@ -1,4 +1,4 @@
-//! OpenLive workspace sandbox — constrained file I/O under app data.
+//! `OpenLive` workspace sandbox — constrained file I/O under app data.
 //! Not a full multi-agent OS; safe foundation for agent file tools.
 
 use std::fs;
@@ -67,6 +67,7 @@ pub fn resolve_in_workspace(rel: &str) -> Result<PathBuf, String> {
     Ok(joined)
 }
 
+#[must_use]
 pub fn sandbox_status() -> SandboxStatus {
     let root = sandbox_root();
     let ws = workspace_dir();
@@ -76,7 +77,7 @@ pub fn sandbox_status() -> SandboxStatus {
         for e in rd.flatten().take(100) {
             let name = e.file_name().to_string_lossy().to_string();
             let meta = e.metadata().ok();
-            let kind = if meta.as_ref().map(|m| m.is_dir()).unwrap_or(false) {
+            let kind = if meta.as_ref().is_some_and(std::fs::Metadata::is_dir) {
                 "dir"
             } else {
                 "file"
@@ -133,7 +134,11 @@ pub fn write_file(rel: &str, content: &str) -> Result<String, String> {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     fs::write(&path, content.as_bytes()).map_err(|e| e.to_string())?;
-    Ok(format!("wrote {} bytes to {}", content.len(), path.display()))
+    Ok(format!(
+        "wrote {} bytes to {}",
+        content.len(),
+        path.display()
+    ))
 }
 
 pub fn delete_file(rel: &str) -> Result<String, String> {
@@ -150,7 +155,7 @@ pub fn delete_file(rel: &str) -> Result<String, String> {
         } else {
             fs::remove_file(&canon).map_err(|e| e.to_string())?;
         }
-        Ok(format!("deleted {}", rel))
+        Ok(format!("deleted {rel}"))
     } else {
         Err("path not found".into())
     }
@@ -161,6 +166,5 @@ pub fn delete_file(rel: &str) -> Result<String, String> {
 pub fn path_under_workspace(path: &Path) -> String {
     let ws = workspace_dir();
     path.strip_prefix(&ws)
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| path.display().to_string())
+        .map_or_else(|_| path.display().to_string(), |p| p.display().to_string())
 }

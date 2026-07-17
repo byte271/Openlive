@@ -1,5 +1,5 @@
 /**
- * OpenLive 26.7.15 — audio utilities: polyphase FIR resampling, PCM conversion,
+ * OpenLive 26.7.16 — audio utilities: polyphase FIR resampling, PCM conversion,
  * RMS, echo reference correlation, and NLMS adaptive echo cancellation.
  */
 

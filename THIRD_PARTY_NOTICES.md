@@ -4,7 +4,7 @@ OpenLive (Apache-2.0) incorporates ideas, APIs, and optional integrations from
 the open-source projects below. **Respect each project's license** when you
 redistribute binaries, models, or Docker images that bundle them.
 
-This file is the authoritative credit list for **v26.7.15**.
+This file is the authoritative credit list for **v26.7.16**.
 
 ---
 
@@ -59,6 +59,12 @@ binaries and update this notice.
 | OpenAI Realtime API (public docs) | Event shape compatibility for the optional realtime provider — not an inclusion of OpenAI code |
 | WebRTC (W3C / IETF) | Browser `RTCPeerConnection` path for low-latency media |
 | **[webrtc-rs](https://github.com/webrtc-rs/webrtc)** | MIT/Apache-2.0 pure-Rust WebRTC stack used by the gateway-native peer hub |
+
+## Desktop shell
+
+| Project | License | Use in OpenLive |
+|---------|---------|-----------------|
+| **[Tauri](https://tauri.app/)** | MIT / Apache-2.0 | v2 desktop shell for Windows (MSI) and macOS (DMG/App) in `apps/openlive-desktop` |
 
 ---
 

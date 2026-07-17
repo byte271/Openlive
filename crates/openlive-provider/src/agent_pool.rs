@@ -31,7 +31,7 @@ pub struct PoolRequest {
     /// Explicit sub-tasks. If empty, the pool derives angles from `intent`.
     #[serde(default)]
     pub tasks: Vec<PoolTask>,
-    /// How many agents to run (clamped 1..=MAX_AGENTS).
+    /// How many agents to run (clamped `1..=MAX_AGENTS`).
     #[serde(default)]
     pub max_agents: Option<usize>,
     #[serde(default)]
@@ -64,6 +64,7 @@ pub struct PoolResult {
 }
 
 /// Derive focused research angles from a parent question.
+#[must_use]
 pub fn derive_angles(intent: &str, n: usize) -> Vec<String> {
     let q = intent.trim();
     let n = n.clamp(1, MAX_AGENTS);
@@ -84,8 +85,8 @@ pub fn derive_angles(intent: &str, n: usize) -> Vec<String> {
 }
 
 /// Run a concurrent agent pool.
-/// Fast path (`use_llm = false`): pure web_search workers.
-/// Full path (`use_llm = true`): each worker runs the full AgentClient loop.
+/// Fast path (`use_llm = false`): pure `web_search` workers.
+/// Full path (`use_llm = true`): each worker runs the full `AgentClient` loop.
 pub async fn run_pool(
     agent: &AgentClient,
     http: &reqwest::Client,
@@ -222,7 +223,10 @@ fn synthesize_results(parent: &str, results: &[PoolAgentResult]) -> Option<Strin
     }
     chunks.truncate(4);
     let body = chunks.join(" ");
-    let prefix = if parent.chars().any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c)) {
+    let prefix = if parent
+        .chars()
+        .any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c))
+    {
         format!("关于「{parent}」：")
     } else {
         format!("On “{parent}”: ")
@@ -235,6 +239,7 @@ fn synthesize_results(parent: &str, results: &[PoolAgentResult]) -> Option<Strin
 }
 
 /// Status snapshot for health/meta.
+#[must_use]
 pub fn pool_limits() -> serde_json::Value {
     json!({
         "max_agents": MAX_AGENTS,

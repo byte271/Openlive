@@ -1,4 +1,4 @@
-//! Simple durable memory for OpenLive (JSON file under app data dir).
+//! Simple durable memory for `OpenLive` (JSON file under app data dir).
 
 use std::fs;
 use std::path::PathBuf;
@@ -41,6 +41,7 @@ fn memory_path() -> PathBuf {
         .join("session.json")
 }
 
+#[must_use]
 pub fn load_memory() -> MemoryDoc {
     let path = memory_path();
     if let Ok(bytes) = fs::read(&path) {
@@ -87,9 +88,10 @@ pub fn append_memory(role: &str, text: &str, tags: Vec<String>) -> Result<Memory
 
 pub fn export_memory_json() -> Result<Value, String> {
     let doc = load_memory();
-    Ok(serde_json::to_value(doc).map_err(|e| e.to_string())?)
+    serde_json::to_value(doc).map_err(|e| e.to_string())
 }
 
+#[must_use]
 pub fn memory_file_path() -> String {
     memory_path().display().to_string()
 }

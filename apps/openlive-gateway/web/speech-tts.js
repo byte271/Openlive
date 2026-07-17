@@ -1,5 +1,5 @@
 /**
- * OpenLive 26.7.15 — browser TTS (Web Speech API), hardened for Windows Chrome/Edge.
+ * OpenLive 26.7.16 — browser TTS (Web Speech API), hardened for Windows Chrome/Edge.
  * Falls back gracefully; never leaves the app silent without a clear reason.
  */
 

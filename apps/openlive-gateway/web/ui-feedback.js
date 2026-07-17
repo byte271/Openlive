@@ -1,12 +1,12 @@
 /**
- * OpenLive 26.7.15 — tactile UI feedback (sound + micro-haptics).
+ * OpenLive 26.7.16 — tactile UI feedback (sound + micro-haptics).
  *
  * Soft Web Audio cues for sliders, taps, and mode changes. No assets:
  * short synthesized ticks so the silver motion slider and primary controls
  * feel physical. Respects reduced-motion and an optional mute flag.
  */
 
-const STORAGE_KEY = "openlive.v26.7.15.uiFeedback";
+const STORAGE_KEY = "openlive.v26.7.16.uiFeedback";
 
 /** @type {AudioContext | null} */
 let ctx = null;

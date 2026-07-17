@@ -21,6 +21,12 @@ pub struct HeadlessBrowserStatus {
     pub note: String,
 }
 
+fn has_extension(path: &str, ext: &str) -> bool {
+    std::path::Path::new(path)
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case(ext))
+}
+
 fn candidate_bins() -> Vec<PathBuf> {
     let mut out = Vec::new();
     if let Ok(p) = std::env::var("OPENLIVE_BROWSER") {
@@ -70,17 +76,17 @@ fn which_bin(name: &str) -> Result<PathBuf, ()> {
     Err(())
 }
 
+#[must_use]
 pub fn find_browser_binary() -> Option<PathBuf> {
     candidate_bins().into_iter().find(|p| p.is_file())
 }
 
+#[must_use]
 pub fn headless_browser_status() -> HeadlessBrowserStatus {
     match find_browser_binary() {
         Some(bin) => {
             let name = bin
-                .file_name()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "browser".into());
+                .file_name().map_or_else(|| "browser".into(), |s| s.to_string_lossy().into_owned());
             HeadlessBrowserStatus {
                 available: true,
                 browser: name,
@@ -154,7 +160,11 @@ fn dump_dom_once(
         let mut buf = Vec::new();
         out.read_to_end(&mut buf).map_err(|e| e.to_string())?;
         const MAX: usize = 768 * 1024;
-        let slice = if buf.len() > MAX { &buf[..MAX] } else { &buf[..] };
+        let slice = if buf.len() > MAX {
+            &buf[..MAX]
+        } else {
+            &buf[..]
+        };
         stdout = String::from_utf8_lossy(slice).into_owned();
     }
     let _ = child.wait();
@@ -184,12 +194,10 @@ fn dump_dom_once(
 /// Fetch rendered DOM via system Chrome/Edge headless.
 pub fn headless_browse(url: &str) -> Result<(String, Citation, String), String> {
     let parsed = validate_public_url(url)?;
-    let host = parsed
-        .host_str()
-        .unwrap_or("page")
-        .to_ascii_lowercase();
+    let host = parsed.host_str().unwrap_or("page").to_ascii_lowercase();
     let bin = find_browser_binary().ok_or_else(|| {
-        "no system Chrome/Edge found (set OPENLIVE_BROWSER or install a Chromium browser)".to_string()
+        "no system Chrome/Edge found (set OPENLIVE_BROWSER or install a Chromium browser)"
+            .to_string()
     })?;
     dump_dom_once(&bin, &parsed, &host)
 }
@@ -208,11 +216,17 @@ pub struct HeadlessScreenshotResult {
 fn safe_shot_name(url: &str) -> String {
     let host = reqwest::Url::parse(url)
         .ok()
-        .and_then(|u| u.host_str().map(|s| s.to_owned()))
+        .and_then(|u| u.host_str().map(std::borrow::ToOwned::to_owned))
         .unwrap_or_else(|| "page".into());
     let host: String = host
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '.' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -229,7 +243,8 @@ pub fn headless_screenshot(
 ) -> Result<HeadlessScreenshotResult, String> {
     let parsed = validate_public_url(url)?;
     let bin = find_browser_binary().ok_or_else(|| {
-        "no system Chrome/Edge found (set OPENLIVE_BROWSER or install a Chromium browser)".to_string()
+        "no system Chrome/Edge found (set OPENLIVE_BROWSER or install a Chromium browser)"
+            .to_string()
     })?;
 
     let width = width.clamp(320, 2560);
@@ -288,8 +303,7 @@ pub fn headless_screenshot(
 
     let browser = bin
         .file_name()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "browser".into());
+        .map_or_else(|| "browser".into(), |s| s.to_string_lossy().into_owned());
 
     Ok(HeadlessScreenshotResult {
         path: out_path.display().to_string(),
@@ -314,7 +328,7 @@ pub struct HeadlessPdfResult {
 fn safe_pdf_name(url: &str) -> String {
     let host = reqwest::Url::parse(url)
         .ok()
-        .and_then(|u| u.host_str().map(|s| s.to_owned()))
+        .and_then(|u| u.host_str().map(std::borrow::ToOwned::to_owned))
         .unwrap_or_else(|| "page".into());
     let host: String = host
         .chars()
@@ -337,7 +351,8 @@ fn safe_pdf_name(url: &str) -> String {
 pub fn headless_pdf(url: &str) -> Result<HeadlessPdfResult, String> {
     let parsed = validate_public_url(url)?;
     let bin = find_browser_binary().ok_or_else(|| {
-        "no system Chrome/Edge found (set OPENLIVE_BROWSER or install a Chromium browser)".to_string()
+        "no system Chrome/Edge found (set OPENLIVE_BROWSER or install a Chromium browser)"
+            .to_string()
     })?;
 
     let name = safe_pdf_name(parsed.as_str());
@@ -400,8 +415,7 @@ pub fn headless_pdf(url: &str) -> Result<HeadlessPdfResult, String> {
 
     let browser = bin
         .file_name()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "browser".into());
+        .map_or_else(|| "browser".into(), |s| s.to_string_lossy().into_owned());
 
     Ok(HeadlessPdfResult {
         path: out_path.display().to_string(),
@@ -422,6 +436,7 @@ pub struct LabMediaItem {
 }
 
 /// List recent screenshots and PDFs under sandbox lab.
+#[must_use]
 pub fn list_lab_media(limit: usize) -> Vec<LabMediaItem> {
     let limit = limit.clamp(1, 100);
     let mut items = Vec::new();
@@ -440,20 +455,19 @@ pub fn list_lab_media(limit: usize) -> Vec<LabMediaItem> {
                 }
                 let name = e.file_name().to_string_lossy().into_owned();
                 let ext_ok = match kind {
-                    "screenshot" => name.to_ascii_lowercase().ends_with(".png"),
-                    "pdf" => name.to_ascii_lowercase().ends_with(".pdf"),
+                    "screenshot" => has_extension(&name, "png"),
+                    "pdf" => has_extension(&name, "pdf"),
                     _ => false,
                 };
                 if !ext_ok {
                     continue;
                 }
                 let meta = e.metadata().ok();
-                let bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+                let bytes = meta.as_ref().map_or(0, std::fs::Metadata::len);
                 let modified_ms = meta
                     .and_then(|m| m.modified().ok())
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_millis() as u64)
-                    .unwrap_or(0);
+                    .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
                 items.push(LabMediaItem {
                     kind: kind.into(),
                     name,
@@ -471,7 +485,10 @@ pub fn list_lab_media(limit: usize) -> Vec<LabMediaItem> {
 
 /// Read a lab media file as base64 (path must be under lab/screenshots or lab/pdfs).
 pub fn read_lab_media_base64(rel: &str) -> Result<(String, String, u64), String> {
-    let rel = rel.trim().trim_start_matches(['/', '\\']).replace('\\', "/");
+    let rel = rel
+        .trim()
+        .trim_start_matches(['/', '\\'])
+        .replace('\\', "/");
     if rel.contains("..") {
         return Err("path must not contain ..".into());
     }
@@ -487,9 +504,9 @@ pub fn read_lab_media_base64(rel: &str) -> Result<(String, String, u64), String>
     if bytes.len() > 4 * 1024 * 1024 {
         return Err("file too large to inline (max 4MB)".into());
     }
-    let mime = if rel.ends_with(".png") {
+    let mime = if has_extension(&rel, "png") {
         "image/png"
-    } else if rel.ends_with(".pdf") {
+    } else if has_extension(&rel, "pdf") {
         "application/pdf"
     } else {
         "application/octet-stream"

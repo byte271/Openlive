@@ -188,7 +188,8 @@ impl EndpointingTracker {
             prosodic_finality,
             should_respond,
             reason: if should_respond {
-                "speech ended with sufficient silence and falling energy or semantic finality".to_owned()
+                "speech ended with sufficient silence and falling energy or semantic finality"
+                    .to_owned()
             } else {
                 "waiting for more silence or clearer prosodic/semantic finality".to_owned()
             },

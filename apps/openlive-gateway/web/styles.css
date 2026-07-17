@@ -1,5 +1,5 @@
 /* =========================================================================
-   Openlive 26.7.15 — Voice surface design system
+   Openlive 26.7.16 — Voice surface design system
    --------------------------------------------------------------------------
    Sections:
      1. Tokens (themes, motion, typography, elevation)
@@ -15,6 +15,7 @@
     11. State theming hooks (body[data-mode])
     12. Responsive + reduced-motion
     13. Live Presence (chatgpt theme) premium polish
+    14. Boot splash, welcome, and swipeable voice selector
    ========================================================================= */
 
 /* ---------------------------------------------------------------------------
@@ -132,6 +133,298 @@ html[data-theme="signal"] {
   --ambient-1: rgba(255, 207, 58, 0.08);
   --ambient-2: rgba(255, 138, 58, 0.05);
   --ambient-3: rgba(76, 210, 255, 0.04);
+}
+
+/* ---------------------------------------------------------------------------
+   14. Boot splash, welcome, and swipeable voice selector
+   --------------------------------------------------------------------------- */
+
+/* Boot splash — white sphere + sliding brand */
+.boot-splash {
+  --boot-sphere-size: 120px;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: #000;
+  color: #fff;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.8s var(--ease-out), visibility 0.8s var(--ease-out);
+}
+
+.boot-splash.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.boot-splash-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+.boot-sphere-wrap {
+  position: relative;
+  width: var(--boot-sphere-size);
+  height: var(--boot-sphere-size);
+  display: grid;
+  place-items: center;
+}
+
+.boot-sphere {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #ffffff 0%, #e8e8e8 40%, #b0b0b0 100%);
+  box-shadow:
+    0 0 40px rgba(255, 255, 255, 0.35),
+    0 0 80px rgba(255, 255, 255, 0.15),
+    inset -8px -8px 20px rgba(0, 0, 0, 0.12);
+  animation: boot-sphere-in 1s var(--ease-out) forwards;
+}
+
+.boot-sphere-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.25) 0%, transparent 70%);
+  filter: blur(20px);
+  animation: boot-sphere-pulse 2.5s ease-in-out infinite;
+}
+
+.boot-brand {
+  font-size: 2.4rem;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  color: #fff;
+  opacity: 0;
+  transform: translateX(-30px);
+  animation: boot-brand-slide 1.2s var(--ease-out) 1s forwards;
+}
+
+.boot-status {
+  position: absolute;
+  bottom: 48px;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.55);
+  opacity: 0;
+  animation: boot-fade-in 0.6s var(--ease-out) 0.4s forwards;
+}
+
+.boot-splash.is-hidden .boot-brand {
+  animation: boot-brand-fade 0.8s var(--ease-out) forwards;
+}
+
+.boot-splash.is-hidden .boot-sphere {
+  animation: boot-sphere-out 0.8s var(--ease-out) forwards;
+}
+
+@keyframes boot-sphere-in {
+  from { transform: scale(0.6); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes boot-sphere-out {
+  from { transform: scale(1); opacity: 1; }
+  to { transform: scale(0.6); opacity: 0; }
+}
+
+@keyframes boot-sphere-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+@keyframes boot-brand-slide {
+  0% { opacity: 0; transform: translateX(-30px); }
+  45% { opacity: 1; transform: translateX(0); }
+  70% { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(30px); }
+}
+
+@keyframes boot-brand-fade {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(20px); }
+}
+
+@keyframes boot-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Welcome panel */
+.welcome-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 220px;
+}
+
+.welcome-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  animation: welcome-in 0.6s var(--ease-out) forwards;
+}
+
+.welcome-title {
+  font-size: 2.6rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: #fff;
+  margin: 0;
+}
+
+.welcome-subtitle {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.65);
+  margin: 0;
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+@keyframes welcome-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Expanding Next button */
+.setup-primary.welcome-next {
+  position: relative;
+  min-width: 140px;
+  height: 48px;
+  border-radius: 999px;
+  background: #fff;
+  color: #000;
+  font-weight: 600;
+  font-size: 1rem;
+  transition:
+    transform 0.35s var(--ease-out),
+    width 0.5s var(--ease-out),
+    height 0.5s var(--ease-out),
+    border-radius 0.5s var(--ease-out),
+    opacity 0.35s var(--ease-out);
+  overflow: hidden;
+}
+
+.setup-primary.welcome-next:hover {
+  transform: scale(1.04);
+}
+
+.setup-primary.welcome-next.is-expanding {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%);
+  z-index: 2000;
+  animation: next-expand 0.7s var(--ease-out) forwards;
+  color: transparent;
+}
+
+@keyframes next-expand {
+  0% { width: 140px; height: 48px; border-radius: 999px; }
+  60% { width: 100vw; height: 48px; border-radius: 999px; }
+  100% { width: 100vw; height: 100vh; border-radius: 0; top: 0; left: 0; bottom: auto; transform: none; }
+}
+
+/* Swipeable voice selector */
+.voice-swipe-container {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px max(16px, calc(50% - 110px)) 24px;
+  margin: 0 -12px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.voice-swipe-container::-webkit-scrollbar {
+  display: none;
+}
+
+.voice-card {
+  flex: 0 0 220px;
+  scroll-snap-align: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition:
+    transform 0.25s var(--ease-out),
+    background 0.25s var(--ease-out),
+    border-color 0.25s var(--ease-out),
+    box-shadow 0.25s var(--ease-out);
+}
+
+.voice-card:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-4px);
+}
+
+.voice-card.active {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: #fff;
+  box-shadow: 0 0 30px rgba(255, 255, 255, 0.12);
+}
+
+.voice-card-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #fff;
+  color: #000;
+  display: grid;
+  place-items: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.voice-card-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.voice-card-desc {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+  line-height: 1.4;
+}
+
+.voice-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: -8px;
+  margin-bottom: 12px;
+}
+
+.voice-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  transition: background 0.2s var(--ease-out), transform 0.2s var(--ease-out);
+}
+
+.voice-dot.active {
+  background: #fff;
+  transform: scale(1.2);
 }
 
 /* Theme: Live Presence — modern voice-mode polish (original OpenLive UI) */
@@ -1643,6 +1936,31 @@ input[type="range"].silver-slider::-webkit-slider-thumb {
   max-width: 420px;
 }
 
+.onboarding-card kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+button.onboarding-start-btn {
+  min-width: 100px;
+  height: 38px;
+  font-size: 0.85rem;
+}
+
 .onboarding-bullets {
   display: grid;
   gap: var(--space-2);
@@ -1928,17 +2246,324 @@ html[data-theme="signal"] body[data-mode="connection_error"] {
     transition-duration: 0.01ms !important;
   }
 
-  .ambient-aurora {
+  .ambient-aurora,
+  .orb-glow {
     animation: none;
   }
 
   .primary-control.listening {
     animation: none;
   }
+
+  .voice-stage {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* =========================================================================
-   13. Openlive 26.7.15 — gpt-live parity additions
+   14. Openlive 26.7.16 — enhanced UI animations + full-screen mode
+   --------------------------------------------------------------------------
+   Extra motion polish for v26.7.16: page-load entrance, orb glow pulse,
+   springy sheets, lifted buttons, toast/backchannel scale, transcript
+   revision flash, and immersive full-screen mode.
+   ========================================================================= */
+
+/* Page-load entrance for the voice stage */
+.voice-stage {
+  animation: stage-enter 720ms var(--ease-out) both;
+}
+
+@keyframes stage-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Orb ambient glow pulse keyed to energy (opacity only, transform stays energy-driven) */
+.orb-glow {
+  animation: orb-glow-pulse 3.2s var(--ease-in-out) infinite;
+}
+
+@keyframes orb-glow-pulse {
+  0%, 100% {
+    opacity: calc(0.3 + var(--input-energy) * 0.25 + var(--output-energy) * 0.4);
+  }
+  50% {
+    opacity: calc(0.38 + var(--input-energy) * 0.3 + var(--output-energy) * 0.48);
+  }
+}
+
+/* Spring-curve sheet/drawer open (transform only; opacity keeps its own ease) */
+.sheet,
+.transcript-drawer,
+.diagnostics {
+  transition:
+    transform var(--t-slow) cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity var(--t-base) var(--ease-out);
+}
+
+/* Button hover lift + shadow */
+.icon-button,
+.dock-button {
+  transition:
+    background var(--t-fast) var(--ease-out),
+    transform var(--t-fast) cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-color var(--t-fast) var(--ease-out),
+    box-shadow var(--t-fast) var(--ease-out);
+}
+
+.icon-button:hover,
+.dock-button:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+
+.icon-button:active,
+.dock-button:active {
+  transform: translateY(0) scale(0.95);
+}
+
+/* Toast / backchannel badge scale + fade (replays when toast is shown) */
+.agent-toast:not([hidden]),
+.backchannel-badge {
+  animation: badge-pop 320ms var(--ease-out) both;
+}
+
+@keyframes badge-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.7) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Voice copy crossfade */
+.voice-copy.is-swapping {
+  opacity: 0.6;
+  transform: translateY(-2px);
+  transition: opacity 90ms var(--ease-out), transform 90ms var(--ease-out);
+}
+
+/* Primary control enhanced hover */
+.primary-control {
+  transition:
+    transform var(--t-fast) cubic-bezier(0.34, 1.56, 0.64, 1),
+    background var(--t-base) var(--ease-out),
+    box-shadow var(--t-base) var(--ease-out),
+    min-width var(--t-base) var(--ease-out);
+}
+
+/* Exit full-screen button (visible only in full-screen) */
+.exit-fullscreen {
+  position: fixed;
+  z-index: 25;
+  top: max(var(--space-4), env(safe-area-inset-top));
+  right: max(var(--space-4), env(safe-area-inset-right));
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px);
+  transition:
+    opacity var(--t-base) var(--ease-out),
+    transform var(--t-base) var(--ease-out),
+    background var(--t-fast) var(--ease-out);
+}
+
+.exit-fullscreen:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* Full-screen mode: hide browser chrome and maximize the stage */
+html:fullscreen,
+html:fullscreen body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+html:fullscreen .topbar,
+html:fullscreen .control-dock,
+html:fullscreen .context-rail,
+html:fullscreen .nav-rail {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t-slow) var(--ease-out);
+}
+
+html:fullscreen .voice-stage {
+  padding: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+html:fullscreen .orb-shell {
+  width: min(560px, 70vw);
+}
+
+html:fullscreen .voice-copy {
+  min-height: auto;
+  margin-top: 0;
+}
+
+html:fullscreen .assistant-ephemeral {
+  max-width: min(720px, 80vw);
+  font-size: clamp(1.15rem, 2.4vw, 1.45rem);
+}
+
+/* Show chrome and exit button on hover/tap in full-screen */
+html:fullscreen .exit-fullscreen,
+html:fullscreen .topbar:hover ~ .exit-fullscreen,
+html:fullscreen .exit-fullscreen:hover,
+html:fullscreen .topbar:hover,
+html:fullscreen .control-dock:hover {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+/* Always show exit button on touch devices where hover is unavailable */
+@media (hover: none) and (pointer: coarse) {
+  html:fullscreen .exit-fullscreen {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+}
+
+/* Ambient background breathing animation */
+.ambient {
+  animation: ambient-breathe 12s var(--ease-in-out) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient {
+    animation: none;
+  }
+}
+
+@keyframes ambient-breathe {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.92;
+    transform: scale(1.02);
+  }
+}
+
+/* Staggered entrance for control dock buttons */
+.control-dock .composer-icon,
+.control-dock .composer-mic,
+.control-dock .composer-end {
+  opacity: 0;
+  transform: translateY(12px);
+  animation: dock-item-enter 420ms var(--ease-out) forwards;
+}
+
+.control-dock .composer-icon { animation-delay: 60ms; }
+.control-dock .composer-mic { animation-delay: 120ms; }
+.control-dock .composer-end { animation-delay: 180ms; }
+
+@keyframes dock-item-enter {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Enhanced sheet entrance */
+.sheet[data-open="true"] {
+  animation: sheet-enter 360ms var(--ease-out) forwards;
+}
+
+@keyframes sheet-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(24px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+/* Orb continuous idle breathe */
+.orb-shell {
+  animation: orb-idle-breathe 6s var(--ease-in-out) infinite;
+}
+
+@keyframes orb-idle-breathe {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.015);
+  }
+}
+
+/* Topbar slide-down entrance */
+.topbar {
+  animation: topbar-enter 520ms var(--ease-out) forwards;
+}
+
+@keyframes topbar-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Settings toggle row hover */
+.settings-row {
+  transition: background var(--t-fast) var(--ease-out), transform var(--t-fast) var(--ease-out);
+}
+
+.settings-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Latency pill pulse on update */
+.latency-pill {
+  transition: background var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out);
+}
+
+.latency-pill.updated {
+  animation: latency-pulse 600ms var(--ease-out);
+}
+
+@keyframes latency-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.35);
+  }
+  100% {
+    box-shadow: 0 0 0 8px rgba(var(--accent-rgb), 0);
+  }
+}
+
+/* =========================================================================
+   13. Openlive 26.7.16 — gpt-live parity additions
    --------------------------------------------------------------------------
    Styles for: quota pill, instructions sheet + axis buttons, instructions
    badge, camera/screen-share dock buttons, layout toggle, backchannel
@@ -2392,7 +3017,7 @@ body[data-layout="inline"] .transcript-drawer[data-open="false"] {
 
 
 /* ==========================================================================
-   Openlive 26.7.15 — Signal Desk
+   Openlive 26.7.16 — Signal Desk
    Design philosophy: a live technical instrument where conversation, delegated
    work, and evidence share one legible surface. Cyan verifies transport,
    coral marks intervention, yellow requests judgment, green confirms work.
@@ -2775,11 +3400,11 @@ html[data-theme="chatgpt"] .onboarding-card {
 
 @keyframes bubble-revise {
   0% {
-    background: rgba(var(--accent-rgb), 0.28);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.45);
     transform: translateY(1px);
   }
   100% {
-    background: transparent;
+    box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0);
     transform: translateY(0);
   }
 }
@@ -2879,7 +3504,7 @@ html[data-theme="chatgpt"] .onboarding-card {
 }
 
 /* =========================================================================
-   14. Minimal black voice UI + setup wizard (26.7.15)
+   14. Minimal black voice UI + setup wizard (26.7.16)
    ========================================================================= */
 
 html[data-theme="minimal"] {
@@ -3158,6 +3783,10 @@ body[data-ui="minimal"] .orb-shell {
   width: min(280px, 58vw);
   height: min(280px, 58vw);
   filter: drop-shadow(0 0 60px rgba(107, 140, 255, 0.35));
+}
+
+body[data-mode="idle"][data-ui="minimal"] .orb-shell {
+  cursor: pointer;
 }
 
 body[data-ui="minimal"] #voiceOrb {
@@ -3455,7 +4084,6 @@ body[data-ui="minimal"].show-rail .minimal-rail {
 
 body.setup-open .minimal-dock,
 body.setup-open .minimal-topbar {
-  pointer-events: none;
   opacity: 0.25;
 }
 
@@ -4322,4 +4950,1151 @@ body[data-ui="minimal"] .settings-sheet.sheet {
 #setupLlmProvider,
 #settingsLlmProvider {
   font-weight: 500;
+}
+
+/* =========================================================================
+   15. OpenLive 26.7.16 — Full UI revamp: splash, wizard, full-screen
+   --------------------------------------------------------------------------
+   Boot/splash animation, redesigned welcome screen, full-screen settings
+   overlay with slide-in transitions, ripple click feedback, and menu bar
+   polish.  All additions are additive — existing rules above are untouched.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------------------
+   15a. Boot / splash screen
+   --------------------------------------------------------------------------- */
+
+.boot-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 42%, rgba(var(--accent-rgb), 0.08), transparent 50%), var(--bg);
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 600ms var(--ease-out), visibility 600ms;
+}
+
+.boot-splash.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.boot-splash-inner {
+  display: grid;
+  justify-items: center;
+  gap: 24px;
+}
+
+.boot-logo {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  display: grid;
+  place-items: center;
+}
+
+.boot-logo-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(var(--accent-rgb), 0.35);
+  border-top-color: var(--accent);
+  animation: boot-spin 900ms var(--ease-in-out) infinite;
+}
+
+.boot-logo-ring-2 {
+  inset: 12px;
+  border-color: rgba(var(--accent-rgb), 0.18);
+  border-bottom-color: var(--accent-2);
+  animation-duration: 1400ms;
+  animation-direction: reverse;
+}
+
+.boot-logo-core {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--accent), var(--accent-2));
+  box-shadow: 0 0 24px var(--orb-shadow);
+  animation: boot-pulse 1.6s var(--ease-in-out) infinite;
+}
+
+@keyframes boot-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes boot-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(0.82); opacity: 1; }
+}
+
+.boot-brand {
+  font-size: 1.4rem;
+  font-weight: 680;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  animation: boot-fade-in 600ms var(--ease-out) 200ms both;
+}
+
+.boot-progress {
+  width: 140px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.boot-progress i {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  animation: boot-progress-slide 1.4s var(--ease-in-out) infinite;
+}
+
+@keyframes boot-progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+.boot-status {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--fg-subtle);
+  letter-spacing: 0.04em;
+  animation: boot-fade-in 600ms var(--ease-out) 400ms both;
+}
+
+@keyframes boot-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------------------------------------------------------------------------
+   15b. Redesigned setup wizard
+   --------------------------------------------------------------------------- */
+
+.setup-wizard {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: radial-gradient(circle at 50% 30%, rgba(var(--accent-rgb), 0.12), transparent 55%),
+    rgba(4, 6, 12, 0.82);
+  backdrop-filter: blur(20px) saturate(1.2);
+  opacity: 1;
+  transition: opacity 400ms var(--ease-out), visibility 400ms;
+}
+
+.setup-wizard[hidden] {
+  display: grid !important;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.setup-wizard[hidden] .setup-card {
+  transform: translateY(24px) scale(0.96);
+}
+
+.setup-card {
+  position: relative;
+  width: min(540px, 96vw);
+  max-height: min(88svh, 820px);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-8) var(--space-8) var(--space-6);
+  border-radius: var(--r-xl);
+  background: linear-gradient(165deg, rgba(24, 28, 42, 0.96), rgba(12, 14, 22, 0.98));
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  overflow: hidden;
+  transition: transform 500ms var(--ease-out);
+  animation: setup-card-enter 600ms var(--ease-out) both;
+}
+
+@keyframes setup-card-enter {
+  from { opacity: 0; transform: translateY(30px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.setup-hero {
+  position: absolute;
+  top: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 120px;
+  pointer-events: none;
+}
+
+.setup-hero-orb {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, rgba(var(--accent-rgb), 0.6), rgba(var(--accent-rgb), 0.1) 60%, transparent 75%);
+  filter: blur(6px);
+  animation: setup-hero-float 4s var(--ease-in-out) infinite;
+}
+
+.setup-hero-glow {
+  position: absolute;
+  inset: 20%;
+  border-radius: 50%;
+  background: rgba(var(--accent-rgb), 0.3);
+  filter: blur(20px);
+  animation: setup-hero-pulse 3s var(--ease-in-out) infinite;
+}
+
+@keyframes setup-hero-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes setup-hero-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.15); }
+}
+
+.setup-head {
+  text-align: center;
+  margin-bottom: var(--space-6);
+  padding-top: var(--space-5);
+}
+
+.setup-head h1 {
+  font-size: clamp(1.6rem, 3.5vw, 2.2rem);
+  margin-bottom: var(--space-2);
+}
+
+.setup-steps {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+
+.setup-step {
+  padding: 8px 18px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+  transition: all 280ms var(--ease-out);
+}
+
+.setup-step:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+.setup-step.active {
+  background: rgba(var(--accent-rgb), 0.2);
+  border-color: rgba(var(--accent-rgb), 0.5);
+  color: var(--accent);
+  box-shadow: 0 4px 16px rgba(var(--accent-rgb), 0.2);
+}
+
+/* Step progress indicator line */
+.setup-step.active::before {
+  content: "";
+  position: absolute;
+}
+
+.setup-panel.active {
+  animation: setup-panel-slide 320ms var(--ease-out);
+}
+
+@keyframes setup-panel-slide {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.setup-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: auto;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.setup-primary {
+  min-width: 140px;
+  padding: 12px 28px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-2) 100%);
+  color: #0b0c12;
+  font-weight: 700;
+  font-size: 0.95rem;
+  transition: transform var(--t-fast) var(--ease-out),
+    box-shadow var(--t-base) var(--ease-out);
+  box-shadow: 0 8px 24px rgba(var(--accent-rgb), 0.3);
+}
+
+.setup-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(var(--accent-rgb), 0.4);
+}
+
+.setup-primary:active {
+  transform: scale(0.97);
+}
+
+/* ---------------------------------------------------------------------------
+   15c. Full-screen settings overlay
+   --------------------------------------------------------------------------- */
+
+.settings-sheet {
+  position: fixed !important;
+  inset: 0 !important;
+  left: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  max-height: 100svh !important;
+  border-radius: 0 !important;
+  border: 0 !important;
+  transform: translateX(100%) !important;
+  opacity: 1 !important;
+  pointer-events: none !important;
+  background: var(--bg) !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+  transition: transform 420ms var(--ease-out) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 !important;
+  z-index: 80 !important;
+}
+
+.settings-sheet[data-open="true"] {
+  transform: translateX(0) !important;
+  pointer-events: auto !important;
+}
+
+.settings-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  padding: max(var(--space-5), env(safe-area-inset-top))
+    clamp(var(--space-5), 4vw, var(--space-9))
+    var(--space-4);
+  background: rgba(var(--accent-rgb), 0.04);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(20px);
+  margin-bottom: 0 !important;
+}
+
+.settings-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.settings-title .settings-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  background: rgba(var(--accent-rgb), 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
+}
+
+.settings-title .settings-icon svg {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+}
+
+.settings-title strong {
+  font-size: 1.3rem !important;
+  letter-spacing: -0.02em;
+}
+
+.settings-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--space-6) clamp(var(--space-5), 4vw, var(--space-9))
+    max(var(--space-8), env(safe-area-inset-bottom));
+  max-width: 860px;
+  margin: 0 auto;
+  width: 100%;
+  scrollbar-width: thin;
+}
+
+.settings-section {
+  margin-bottom: var(--space-7);
+}
+
+.settings-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  font-size: 1rem;
+  font-weight: 680;
+  letter-spacing: -0.01em;
+}
+
+.settings-section-title svg {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+}
+
+.settings-card {
+  border-radius: var(--r-lg);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+}
+
+/* Full-screen settings: close button styling */
+#closeSettings {
+  width: 44px;
+  height: 44px;
+}
+
+/* ---------------------------------------------------------------------------
+   15d. Slide transitions for sheets & drawers
+   --------------------------------------------------------------------------- */
+
+/* Voice picker slides in from the right */
+#voicePanel {
+  transform: translateX(100%) !important;
+  transition: transform 380ms var(--ease-out) !important;
+}
+#voicePanel[data-open="true"] {
+  transform: translateX(0) !important;
+}
+
+/* Mode picker slides in from the right */
+#modePanel {
+  transform: translateX(100%) !important;
+  transition: transform 380ms var(--ease-out) !important;
+}
+#modePanel[data-open="true"] {
+  transform: translateX(0) !important;
+}
+
+/* Instructions panel slides up from bottom */
+#instructionsPanel {
+  transform: translateY(100%) !important;
+  transition: transform 380ms var(--ease-out) !important;
+}
+#instructionsPanel[data-open="true"] {
+  transform: translateY(0) !important;
+}
+
+/* ---------------------------------------------------------------------------
+   15e. Ripple click feedback
+   --------------------------------------------------------------------------- */
+
+.ripple-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(0);
+  animation: ripple-expand 600ms var(--ease-out);
+  pointer-events: none;
+}
+
+@keyframes ripple-expand {
+  to { transform: scale(2.5); opacity: 0; }
+}
+
+/* Apply ripple to primary interactive elements */
+.primary-control,
+.dock-button,
+.icon-button,
+.composer-mic,
+.setup-primary,
+.ghost-button,
+.settings-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------------------
+   15f. Menu bar / topbar polish
+   --------------------------------------------------------------------------- */
+
+.topbar {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.25), transparent);
+  transition: background 300ms var(--ease-out);
+}
+
+.topbar:hover {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.4), transparent);
+}
+
+.brand {
+  transition: transform var(--t-fast) var(--ease-out),
+    background var(--t-fast) var(--ease-out);
+}
+
+.brand:hover {
+  transform: translateY(-1px);
+}
+
+.brand-name {
+  background: linear-gradient(135deg, var(--fg), color-mix(in srgb, var(--fg) 70%, var(--accent)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Connection dot with subtle glow ring */
+.connection-dot {
+  position: relative;
+}
+
+.connection-dot.connected::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1px solid rgba(126, 226, 179, 0.3);
+  animation: conn-ring 2s var(--ease-out) infinite;
+}
+
+@keyframes conn-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2); opacity: 0; }
+}
+
+/* Icon button hover: lift + glow */
+.icon-button {
+  transition: background var(--t-fast) var(--ease-out),
+    transform var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out),
+    box-shadow var(--t-base) var(--ease-out);
+}
+
+.icon-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.icon-button:active {
+  transform: scale(0.92);
+}
+
+/* ---------------------------------------------------------------------------
+   15g. Stagger entrance animations for settings sections
+   --------------------------------------------------------------------------- */
+
+.settings-sheet[data-open="true"] .settings-section {
+  animation: settings-stagger 500ms var(--ease-out) both;
+}
+
+.settings-sheet[data-open="true"] .settings-section:nth-child(1) { animation-delay: 60ms; }
+.settings-sheet[data-open="true"] .settings-section:nth-child(2) { animation-delay: 110ms; }
+.settings-sheet[data-open="true"] .settings-section:nth-child(3) { animation-delay: 160ms; }
+.settings-sheet[data-open="true"] .settings-section:nth-child(4) { animation-delay: 210ms; }
+.settings-sheet[data-open="true"] .settings-section:nth-child(5) { animation-delay: 260ms; }
+.settings-sheet[data-open="true"] .settings-section:nth-child(6) { animation-delay: 310ms; }
+.settings-sheet[data-open="true"] .settings-section:nth-child(7) { animation-delay: 360ms; }
+.settings-sheet[data-open="true"] .settings-section:nth-child(8) { animation-delay: 410ms; }
+
+@keyframes settings-stagger {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------------------------------------------------------------------------
+   15h. Smooth scroll + custom scrollbar for settings body
+   --------------------------------------------------------------------------- */
+
+.settings-body {
+  scroll-behavior: smooth;
+}
+
+.settings-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.settings-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.settings-body::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+.settings-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--accent-rgb), 0.4);
+}
+
+/* ---------------------------------------------------------------------------
+   15i. Settings buttons — enhanced tactile feel
+   --------------------------------------------------------------------------- */
+
+.settings-btn {
+  padding: 10px 18px;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--fg);
+  transition: transform var(--t-fast) var(--ease-out),
+    background var(--t-fast) var(--ease-out),
+    box-shadow var(--t-base) var(--ease-out);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.settings-btn:active {
+  transform: scale(0.96);
+}
+
+.settings-btn.ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--fg-muted);
+}
+
+.settings-btn.ghost:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--fg);
+}
+
+/* ---------------------------------------------------------------------------
+   15j. Full-screen backdrop blur for overlays
+   --------------------------------------------------------------------------- */
+
+/* Only use the grid+transition approach while boot is in progress.
+   Once boot is ready (or if JS never loads), hidden = truly hidden. */
+body[data-boot="loading"] .setup-wizard[hidden] {
+  display: grid !important;
+}
+
+body[data-boot="ready"] .setup-wizard[hidden],
+.setup-wizard[hidden]:not(body[data-boot="loading"] *) {
+  display: none !important;
+}
+
+/* Ensure boot splash is above everything during load */
+body[data-boot="loading"] .boot-splash {
+  z-index: 9999;
+}
+
+/* Hide topbar elements until boot is done */
+body[data-boot="loading"] .topbar,
+body[data-boot="loading"] .signal-shell,
+body[data-boot="loading"] .control-dock {
+  opacity: 0;
+}
+
+body[data-boot="ready"] .topbar,
+body[data-boot="ready"] .signal-shell,
+body[data-boot="ready"] .control-dock {
+  animation: boot-fade-in 600ms var(--ease-out) both;
+}
+
+/* =========================================================================
+   16. OpenLive 26.7.16 — Extra motion polish & micro-interactions
+   --------------------------------------------------------------------------
+   Research progress slide, thinking shimmer, composer focus glow,
+   ambient mode-transition gradients, button loading spinners, transcript
+   scroll-reveal, overlay backdrop dim, and orb mode-change pulse.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------------------
+   16a. Research progress — slide + fade instead of instant toggle
+   --------------------------------------------------------------------------- */
+
+#researchProgress {
+  transition: opacity 400ms var(--ease-out), transform 400ms var(--ease-out);
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+}
+
+#researchProgress:not([hidden]) {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Shimmer bar inside research progress */
+.research-progress-bar {
+  position: relative;
+  overflow: hidden;
+}
+
+.research-progress-bar i {
+  position: relative;
+}
+
+.research-progress-bar i::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.35) 50%,
+    transparent 100%
+  );
+  animation: research-shimmer 1.6s var(--ease-in-out) infinite;
+}
+
+@keyframes research-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+/* ---------------------------------------------------------------------------
+   16b. Thinking state — subtle dot shimmer near state label
+   --------------------------------------------------------------------------- */
+
+body[data-mode="thinking"] .state-label::after {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: thinking-dot 1.4s var(--ease-in-out) infinite;
+  vertical-align: middle;
+}
+
+@keyframes thinking-dot {
+  0%, 100% { opacity: 0.2; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+/* ---------------------------------------------------------------------------
+   16c. Composer focus glow — ambient ring when input is focused
+   --------------------------------------------------------------------------- */
+
+.composer-bar {
+  transition: border-color var(--t-base) var(--ease-out),
+    box-shadow var(--t-base) var(--ease-out),
+    background var(--t-base) var(--ease-out);
+}
+
+.composer-bar:focus-within {
+  border-color: rgba(var(--accent-rgb), 0.4);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.08),
+    0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
+/* Composer input caret pulse */
+.composer-input {
+  caret-color: var(--accent);
+}
+
+.composer-input:focus {
+  caret-color: var(--accent);
+}
+
+/* ---------------------------------------------------------------------------
+   16d. Ambient background — smooth gradient transition on mode change
+   --------------------------------------------------------------------------- */
+
+.ambient {
+  transition: background 800ms var(--ease-out);
+}
+
+body[data-mode] .ambient {
+  transition: background 1200ms var(--ease-in-out);
+}
+
+/* ---------------------------------------------------------------------------
+   16e. Orb shell — mode-change pulse (scale bump on mode transition)
+   --------------------------------------------------------------------------- */
+
+.orb-shell {
+  transition: transform 600ms var(--ease-out);
+}
+
+body[data-mode="listening"] .orb-shell {
+  transform: scale(1.0);
+}
+
+body[data-mode="speaking"] .orb-shell {
+  transform: scale(1.02);
+}
+
+body[data-mode="thinking"] .orb-shell {
+  transform: scale(0.98);
+}
+
+/* Orb aura breathe — faster on active states */
+.orb-aura {
+  animation: orb-breathe 4s var(--ease-in-out) infinite;
+}
+
+body[data-mode="listening"] .orb-aura,
+body[data-mode="speaking"] .orb-aura {
+  animation-duration: 2.4s;
+}
+
+@keyframes orb-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+
+/* ---------------------------------------------------------------------------
+   16f. Button loading state — spinner for async actions
+   --------------------------------------------------------------------------- */
+
+.is-loading {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+}
+
+.is-loading::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid rgba(var(--accent-rgb), 0.2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: btn-spin 700ms linear infinite;
+}
+
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---------------------------------------------------------------------------
+   16g. Transcript entries — scroll-reveal fade-in for new items
+   --------------------------------------------------------------------------- */
+
+.transcript-log li {
+  animation: transcript-reveal 360ms var(--ease-out) both;
+}
+
+@keyframes transcript-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Tool call cards — stagger entrance */
+.transcript-log li.tool-call,
+.transcript-log li.visual-card {
+  animation: card-slide-in 420ms var(--ease-out) both;
+}
+
+@keyframes card-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   16h. Overlay backdrop dim — fade in when sheets open
+   --------------------------------------------------------------------------- */
+
+body:has(.settings-sheet[data-open="true"])::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(2px);
+  animation: backdrop-dim 300ms var(--ease-out) both;
+  pointer-events: none;
+}
+
+@keyframes backdrop-dim {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---------------------------------------------------------------------------
+   16i. Setup wizard steps — connecting progress line
+   --------------------------------------------------------------------------- */
+
+.setup-steps {
+  position: relative;
+}
+
+.setup-steps::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 10%;
+  right: 10%;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  transform: translateY(-50%);
+  z-index: 0;
+}
+
+.setup-steps::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 10%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  border-radius: 999px;
+  transform: translateY(-50%);
+  z-index: 0;
+  width: 0%;
+  transition: width 500ms var(--ease-out);
+}
+
+.setup-steps:has(.setup-step.active[data-step="0"])::after { width: 0%; }
+.setup-steps:has(.setup-step.active[data-step="1"])::after { width: 27%; }
+.setup-steps:has(.setup-step.active[data-step="2"])::after { width: 54%; }
+
+.setup-step {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   16j. Voice picker & mode picker — staggered list entrance
+   --------------------------------------------------------------------------- */
+
+.voice-list li,
+.mode-list li {
+  animation: list-item-enter 300ms var(--ease-out) both;
+}
+
+.voice-list li:nth-child(1), .mode-list li:nth-child(1) { animation-delay: 30ms; }
+.voice-list li:nth-child(2), .mode-list li:nth-child(2) { animation-delay: 55ms; }
+.voice-list li:nth-child(3), .mode-list li:nth-child(3) { animation-delay: 80ms; }
+.voice-list li:nth-child(4), .mode-list li:nth-child(4) { animation-delay: 105ms; }
+.voice-list li:nth-child(5), .mode-list li:nth-child(5) { animation-delay: 130ms; }
+.voice-list li:nth-child(6), .mode-list li:nth-child(6) { animation-delay: 155ms; }
+
+@keyframes list-item-enter {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   16k. Settings scroll-to-top on open + smooth scroll for sections
+   --------------------------------------------------------------------------- */
+
+.settings-sheet[data-open="true"] .settings-body {
+  animation: settings-scroll-reset 100ms var(--ease-out);
+}
+
+@keyframes settings-scroll-reset {
+  from { opacity: 0.96; }
+  to { opacity: 1; }
+}
+
+/* ---------------------------------------------------------------------------
+   16l. Diagnostics drawer — enhanced slide + stagger metrics
+   --------------------------------------------------------------------------- */
+
+.diagnostics.open .metrics article {
+  animation: metric-enter 400ms var(--ease-out) both;
+}
+
+.diagnostics.open .metrics article:nth-child(1) { animation-delay: 40ms; }
+.diagnostics.open .metrics article:nth-child(2) { animation-delay: 70ms; }
+.diagnostics.open .metrics article:nth-child(3) { animation-delay: 100ms; }
+.diagnostics.open .metrics article:nth-child(4) { animation-delay: 130ms; }
+.diagnostics.open .metrics article:nth-child(5) { animation-delay: 160ms; }
+.diagnostics.open .metrics article:nth-child(6) { animation-delay: 190ms; }
+.diagnostics.open .metrics article:nth-child(7) { animation-delay: 220ms; }
+.diagnostics.open .metrics article:nth-child(8) { animation-delay: 250ms; }
+
+@keyframes metric-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Timeline entries — slide in from right */
+.diagnostics.open .timeline li {
+  animation: timeline-slide 300ms var(--ease-out) both;
+}
+
+@keyframes timeline-slide {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   16m. Primary control — enhanced active state with glow ring
+   --------------------------------------------------------------------------- */
+
+.primary-control.listening::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: var(--r-pill);
+  border: 2px solid rgba(var(--accent-rgb), 0.3);
+  animation: primary-ring 1.8s var(--ease-out) infinite;
+  pointer-events: none;
+}
+
+@keyframes primary-ring {
+  0% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.15);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   16n. State label & detail — smooth text color transition on mode change
+   --------------------------------------------------------------------------- */
+
+.state-label,
+.state-detail,
+.assistant-ephemeral {
+  transition: color 600ms var(--ease-out),
+    opacity 300ms var(--ease-out);
+}
+
+/* Assistant ephemeral text — gentle fade-in when text appears */
+.assistant-ephemeral[data-has-text="true"] {
+  animation: text-appear 400ms var(--ease-out);
+}
+
+@keyframes text-appear {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 0.96;
+    transform: translateY(0);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   16o. Ghost button & settings button — micro-interaction polish
+   --------------------------------------------------------------------------- */
+
+.ghost-button {
+  transition: background var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out),
+    transform var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out);
+}
+
+.ghost-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.ghost-button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+/* ---------------------------------------------------------------------------
+   16p. Connection dot — enhanced state transitions with scale
+   --------------------------------------------------------------------------- */
+
+.connection-dot {
+  transition: background var(--t-base) var(--ease-out),
+    box-shadow var(--t-base) var(--ease-out),
+    transform var(--t-base) var(--ease-out);
+}
+
+.connection-dot.connected {
+  animation: conn-pop 400ms var(--ease-out);
+}
+
+@keyframes conn-pop {
+  0% { transform: scale(0.6); }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+/* ---------------------------------------------------------------------------
+   16q. Reduced motion — disable all new section 16 animations
+   --------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  #researchProgress,
+  .orb-shell,
+  .orb-aura,
+  .ambient,
+  .transcript-log li,
+  .voice-list li,
+  .mode-list li,
+  .diagnostics.open .metrics article,
+  .diagnostics.open .timeline li,
+  .primary-control.listening::before,
+  .state-label,
+  .state-detail,
+  .assistant-ephemeral,
+  .ghost-button,
+  .connection-dot {
+    animation: none !important;
+    transition: none !important;
+  }
+  .setup-steps::after {
+    transition: none !important;
+  }
 }

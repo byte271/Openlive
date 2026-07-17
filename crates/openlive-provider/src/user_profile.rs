@@ -13,10 +13,10 @@ pub struct UserProfile {
     pub display_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferred_language: Option<String>,
-    /// IANA timezone id, e.g. America/Los_Angeles, or local offset label.
+    /// IANA timezone id, e.g. `America/Los_Angeles`, or local offset label.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timezone: Option<String>,
-    /// OpenLive TTS engine preference: auto | piper | formant | browser
+    /// `OpenLive` TTS engine preference: auto | piper | formant | browser
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tts_engine: Option<String>,
     /// Formant / Piper voice id
@@ -36,6 +36,9 @@ pub struct UserProfile {
 }
 
 fn profile_path() -> PathBuf {
+    if let Ok(dir) = std::env::var("OPENLIVE_TEST_PROFILE_DIR") {
+        return PathBuf::from(dir).join("profile.json");
+    }
     if let Ok(local) = std::env::var("LOCALAPPDATA") {
         return PathBuf::from(local)
             .join("openlive")
@@ -61,10 +64,12 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+#[must_use]
 pub fn profile_file_path() -> String {
     profile_path().display().to_string()
 }
 
+#[must_use]
 pub fn load_profile() -> UserProfile {
     let path = profile_path();
     if let Ok(bytes) = fs::read(&path) {
@@ -141,10 +146,7 @@ pub fn patch_profile(partial: &Value) -> Result<UserProfile, String> {
             changed = true;
         }
     }
-    if let Some(lang) = partial
-        .get("preferred_language")
-        .and_then(Value::as_str)
-    {
+    if let Some(lang) = partial.get("preferred_language").and_then(Value::as_str) {
         let lang = lang.trim();
         p.preferred_language = if lang.is_empty() {
             None
@@ -187,10 +189,7 @@ pub fn patch_profile(partial: &Value) -> Result<UserProfile, String> {
     }
     if let Some(c) = partial.get("agent_class").and_then(Value::as_str) {
         let c = c.trim().to_ascii_lowercase();
-        if matches!(
-            c.as_str(),
-            "general" | "researcher" | "coder" | "safe"
-        ) {
+        if matches!(c.as_str(), "general" | "researcher" | "coder" | "safe") {
             p.agent_class = Some(c);
             changed = true;
         }
@@ -329,7 +328,11 @@ pub fn reorder_facts(order: &[usize]) -> Result<UserProfile, String> {
         return Err("no facts".into());
     }
     if order.len() != n {
-        return Err(format!("order length {} must equal facts {}", order.len(), n));
+        return Err(format!(
+            "order length {} must equal facts {}",
+            order.len(),
+            n
+        ));
     }
     let mut seen = vec![false; n];
     let mut next = Vec::with_capacity(n);
@@ -360,10 +363,11 @@ pub fn clear_profile() -> Result<(), String> {
 
 pub fn export_profile_json() -> Result<Value, String> {
     let p = load_profile();
-    Ok(serde_json::to_value(p).map_err(|e| e.to_string())?)
+    serde_json::to_value(p).map_err(|e| e.to_string())
 }
 
 /// Compact line for LLM / offline continuity.
+#[must_use]
 pub fn profile_context_line() -> String {
     let p = load_profile();
     let mut parts = Vec::new();
@@ -389,12 +393,16 @@ pub fn profile_context_line() -> String {
         parts.push(format!("Fact: {f}"));
     }
     if let Some(n) = p.notes.as_ref().filter(|s| !s.is_empty()) {
-        parts.push(format!("Notes: {}", n.chars().take(160).collect::<String>()));
+        parts.push(format!(
+            "Notes: {}",
+            n.chars().take(160).collect::<String>()
+        ));
     }
     parts.join("\n")
 }
 
 /// Snapshot for UI setup hydration.
+#[must_use]
 pub fn profile_setup_hints() -> Value {
     let p = load_profile();
     serde_json::json!({
@@ -412,8 +420,49 @@ pub fn profile_setup_hints() -> Value {
 mod tests {
     use super::*;
 
+    /// Serialises tests that mutate the process-wide profile directory so
+    /// parallel guards do not race on `OPENLIVE_TEST_PROFILE_DIR`.
+    static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Temporarily redirects profile storage to a test directory and cleans
+    /// it up when dropped.
+    struct ProfileTestGuard {
+        original: Option<String>,
+        dir: std::path::PathBuf,
+    }
+
+    impl ProfileTestGuard {
+        fn new() -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "openlive-test-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            let original = std::env::var("OPENLIVE_TEST_PROFILE_DIR").ok();
+            std::env::set_var("OPENLIVE_TEST_PROFILE_DIR", &dir);
+            Self { original, dir }
+        }
+    }
+
+    impl Drop for ProfileTestGuard {
+        fn drop(&mut self) {
+            if let Some(ref dir) = self.original {
+                std::env::set_var("OPENLIVE_TEST_PROFILE_DIR", dir);
+            } else {
+                std::env::remove_var("OPENLIVE_TEST_PROFILE_DIR");
+            }
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
     #[test]
     fn set_and_load_name() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let _guard = ProfileTestGuard::new();
         let _ = set_display_name("TestUserOpenLive");
         let p = load_profile();
         assert_eq!(p.display_name.as_deref(), Some("TestUserOpenLive"));
@@ -421,6 +470,8 @@ mod tests {
 
     #[test]
     fn patch_timezone() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let _guard = ProfileTestGuard::new();
         let p = patch_profile(&serde_json::json!({ "timezone": "UTC" })).unwrap();
         assert_eq!(p.timezone.as_deref(), Some("UTC"));
     }

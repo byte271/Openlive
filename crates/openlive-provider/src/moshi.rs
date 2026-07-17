@@ -1,9 +1,9 @@
 //! Moshi / Kyutai-style native duplex provider.
 //!
 //! Connects to a local Moshi (or Moshi-compatible) WebSocket server and maps
-//! bidirectional PCM + optional text frames into the OpenLive provider trait.
+//! bidirectional PCM + optional text frames into the `OpenLive` provider trait.
 //!
-//! Wire format (OpenLive dialect — keep server adapters thin):
+//! Wire format (`OpenLive` dialect — keep server adapters thin):
 //! - **Binary**: raw mono PCM16 LE at the negotiated sample rate (default 24 kHz)
 //! - **Text JSON**:
 //!   - `{ "type": "text", "text": "…" }` assistant transcript deltas
@@ -17,7 +17,7 @@
 //! ```
 //!
 //! Credit: product category inspired by [Kyutai Moshi](https://github.com/kyutai-labs/moshi)
-//! (Apache-2.0). This adapter is original OpenLive code and does not vendor Moshi.
+//! (Apache-2.0). This adapter is original `OpenLive` code and does not vendor Moshi.
 
 use std::time::Duration;
 
@@ -119,13 +119,8 @@ impl RealtimeProvider for MoshiProvider {
         let voice = self.config.voice.clone();
 
         tokio::spawn(async move {
-            if let Err(error) = run_moshi_session(
-                url,
-                voice,
-                &mut input_receiver,
-                output_sender.clone(),
-            )
-            .await
+            if let Err(error) =
+                run_moshi_session(url, voice, &mut input_receiver, output_sender.clone()).await
             {
                 let _ = output_sender
                     .send(ProviderEmission {
@@ -225,7 +220,7 @@ async fn run_moshi_session(
             }
             maybe_msg = stream.next() => {
                 match maybe_msg {
-                    None => break,
+                    None | Some(Ok(Message::Close(_))) => break,
                     Some(Err(error)) => {
                         return Err(format!("moshi websocket error: {error}"));
                     }
@@ -258,7 +253,6 @@ async fn run_moshi_session(
                     Some(Ok(Message::Ping(p))) => {
                         let _ = sink.send(Message::Pong(p)).await;
                     }
-                    Some(Ok(Message::Close(_))) => break,
                     Some(Ok(_)) => {}
                 }
             }
@@ -279,7 +273,10 @@ async fn handle_moshi_text(
     let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
         return;
     };
-    let kind = value.get("type").and_then(serde_json::Value::as_str).unwrap_or("");
+    let kind = value
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
     let gen = active_generation.unwrap_or_else(uuid::Uuid::new_v4);
     *active_generation = Some(gen);
 
@@ -320,9 +317,11 @@ async fn handle_moshi_text(
                     .send(ProviderEmission {
                         generation_id: Some(gen),
                         media_offset_us,
-                        output: ProviderOutput::Event(RealtimeEvent::ProviderState(ProviderState {
-                            state: ProviderLifecycleState::Complete,
-                        })),
+                        output: ProviderOutput::Event(RealtimeEvent::ProviderState(
+                            ProviderState {
+                                state: ProviderLifecycleState::Complete,
+                            },
+                        )),
                     })
                     .await;
             }
@@ -365,7 +364,10 @@ mod tests {
     #[test]
     fn manifest_is_native_duplex() {
         let provider = MoshiProvider::new(MoshiConfig::default()).expect("url");
-        assert_eq!(provider.manifest().provider_class, ProviderClass::NativeDuplex);
+        assert_eq!(
+            provider.manifest().provider_class,
+            ProviderClass::NativeDuplex
+        );
         assert!(provider.manifest().duplex.native_barge_in);
     }
 }

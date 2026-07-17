@@ -1,10 +1,10 @@
-# OpenLive open-source stack (v26.7.15)
+# OpenLive open-source stack (v26.7.16)
 
 OpenLive is model-neutral. For a **GPT-Live-comparable experience without
 proprietary voice APIs**, run the cascade against well-maintained open projects
 and keep credits/licenses intact (see [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)).
 
-Release notes: [`release-26.7.15.md`](release-26.7.15.md) · Sandbox: [`../sandbox/README.md`](../sandbox/README.md)
+Release notes: [`release-26.7.16.md`](release-26.7.16.md) · Sandbox: [`../sandbox/README.md`](../sandbox/README.md)
 
 ## Recommended production voice path
 
@@ -125,7 +125,24 @@ Browser WebRTC to OpenAI-compatible Realtime SDP is supported when the
 provider mints ephemeral client secrets. Fully self-hosted ICE/DTLS/SRTP
 on the Rust gateway remains a follow-on (tracked in `implementation_plan.md`).
 
+## Desktop app
+
+OpenLive also ships a Tauri v2 desktop shell in `apps/openlive-desktop`.
+The shell loads the same web UI and can spawn the gateway as a child process.
+Build it from that directory:
+
+```bash
+cd apps/openlive-desktop
+cargo tauri build
+```
+
+Supported bundles: Windows MSI, macOS DMG/App. See the
+[`apps/openlive-desktop/README.md`](../apps/openlive-desktop/README.md) for
+dev mode and platform prerequisites.
+
 ## UI
 
 Default theme is **Live Presence** (`chatgpt` token) — an original OpenLive
 visual inspired by modern voice-mode UX, not a proprietary asset clone.
+v26.7.16 adds a boot splash, full-screen mode, ripple click feedback, and a
+full set of entrance/transition animations.

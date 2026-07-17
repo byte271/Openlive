@@ -41,6 +41,7 @@ fn purge(map: &mut HashMap<String, JobEntry>) {
     map.retain(|_, e| e.created.elapsed() < TTL);
 }
 
+#[must_use]
 pub fn get_status(id: &str) -> Option<PoolJobStatus> {
     let mut g = jobs().lock().ok()?;
     purge(&mut g);
@@ -49,6 +50,7 @@ pub fn get_status(id: &str) -> Option<PoolJobStatus> {
 
 /// Start a pool job in the background; returns immediately with `pool_id`.
 /// Clients open SSE `/v1/agent/pool/events?id=` for live progress.
+#[must_use]
 pub fn start_pool_job(agent: AgentClient, req: PoolRequest, use_llm: bool) -> PoolJobStatus {
     let pool_id = Uuid::new_v4().to_string();
     let max = req.max_agents.unwrap_or(4).clamp(1, MAX_AGENTS);
@@ -114,7 +116,6 @@ async fn run_pool_tracked_with_id(
         derive_angles(&parent, max)
             .into_iter()
             .enumerate()
-            .map(|(i, s)| (i, s))
             .collect()
     } else {
         req.tasks
@@ -235,12 +236,9 @@ async fn run_pool_tracked_with_id(
     if let Ok(mut g) = jobs().lock() {
         if let Some(entry) = g.get_mut(pool_id) {
             entry.status.status = status.into();
-            entry.status.completed = ordered
-                .iter()
-                .filter(|r| r.status == "completed")
-                .count();
-            entry.status.partial = ordered.clone();
-            entry.status.synthesis = synthesis.clone();
+            entry.status.completed = ordered.iter().filter(|r| r.status == "completed").count();
+            entry.status.partial.clone_from(&ordered);
+            entry.status.synthesis.clone_from(&synthesis);
             if !ok {
                 entry.status.error = Some("one or more agents failed".into());
             }
@@ -273,7 +271,10 @@ fn synthesize(parent: &str, results: &[PoolAgentResult]) -> Option<String> {
     }
     chunks.truncate(4);
     let body = chunks.join(" ");
-    let prefix = if parent.chars().any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c)) {
+    let prefix = if parent
+        .chars()
+        .any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c))
+    {
         format!("关于「{parent}」：")
     } else {
         format!("On “{parent}”: ")

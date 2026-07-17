@@ -13,7 +13,7 @@ pub const PROTOCOL_VERSION: &str = "1.0";
 /// - 1: Capability offer/selected + visual input (Phase 6)
 /// - 2: Capability offer/selected + visual input (Phase 6 — published)
 /// - 3: Task & evidence orchestration + resume (Phase 7)
-/// - 4: VisualCard + translation (26.7.15)
+/// - 4: `VisualCard` + translation (26.7.15)
 pub const PROTOCOL_REVISION: u16 = 4;
 
 pub use media::{MediaKind, MediaPacket, MediaPacketError, PcmAudioFrame};
@@ -789,8 +789,7 @@ mod tests {
         assert!(!encoded.contains("deadline_ms"));
         assert!(!encoded.contains("evidence_required"));
         assert!(!encoded.contains("generation_id"));
-        let decoded: RealtimeEvent =
-            serde_json::from_str(&encoded).expect("decode task_requested");
+        let decoded: RealtimeEvent = serde_json::from_str(&encoded).expect("decode task_requested");
         assert_eq!(event, decoded);
     }
 
@@ -824,7 +823,9 @@ mod tests {
             summary: "Provider rejected the requested tool".to_owned(),
             evidence_ids: vec![proof_a, proof_b],
             error_code: Some("TOOL_UNSUPPORTED".to_owned()),
-            error_detail: Some("The selected provider does not implement calendar tools".to_owned()),
+            error_detail: Some(
+                "The selected provider does not implement calendar tools".to_owned(),
+            ),
         });
         let encoded = serde_json::to_string(&event).expect("serialize task_outcome");
         assert!(encoded.contains("\"type\":\"task_outcome\""));

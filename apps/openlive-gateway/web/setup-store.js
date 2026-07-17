@@ -1,5 +1,5 @@
 /**
- * OpenLive 26.7.15 — setup store (LLM providers, voice, agent).
+ * OpenLive 26.7.16 — setup store (LLM providers, voice, agent).
  * OpenCode removed. Agent is the built-in tool loop on the gateway.
  *
  * Security: API keys are NEVER written to the project folder, disk files,
@@ -7,7 +7,7 @@
  * session (or gateway process memory after POST /v1/llm/config).
  */
 
-const KEY = "openlive.v26.7.15.setup";
+const KEY = "openlive.v26.7.16.setup";
 
 /** In-memory only — cleared on full page reload. Never serialized. */
 let sessionApiKey = "";

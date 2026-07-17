@@ -1,5 +1,5 @@
 /**
- * OpenLive 26.7.15 — TTS client (Piper via gateway, formant, then browser).
+ * OpenLive 26.7.16 — TTS client (Piper via gateway, formant, then browser).
  */
 
 import { playPcmBase64 } from "./agent-client.js";

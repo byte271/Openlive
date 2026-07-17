@@ -538,7 +538,7 @@ test("clearSettings is safe to call even without localStorage", () => {
   assert.equal(settings.theme, DEFAULT_SETTINGS.theme);
 });
 
-test("default theme is minimal black for v26.7.15", () => {
+test("default theme is minimal black for v26.7.16", () => {
   assert.equal(DEFAULT_SETTINGS.theme, "minimal");
   assert.equal(DEFAULT_SETTINGS.backchannels, "natural");
 });

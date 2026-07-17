@@ -3,6 +3,7 @@ use futures_util::{stream::SplitStream, SinkExt, StreamExt};
 use openlive_protocol::{EventEnvelope, MediaPacket};
 use tokio::{sync::mpsc, task::JoinHandle};
 
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum ServerMessage {
     Control(EventEnvelope),
     Media(MediaPacket),

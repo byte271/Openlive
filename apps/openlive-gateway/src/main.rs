@@ -21,6 +21,7 @@ use axum::{
     Json, Router,
 };
 use clap::Parser;
+use openlive_protocol::PROTOCOL_REVISION;
 use openlive_provider::{
     append_memory, clear_memory, clear_profile, correct_typos, ensure_sandbox, execute_approved,
     export_memory_json, export_profile_json, list_pending, llm_provider_catalog, load_profile,
@@ -31,7 +32,6 @@ use openlive_provider::{
     MockDuplexProvider, PoolRequest, PoolTask, RealtimeProvider, DEFAULT_PIPER_VOICE,
     VOICE_PRESETS,
 };
-use openlive_protocol::PROTOCOL_REVISION;
 use openlive_runtime::SessionStore;
 use tower_http::{services::ServeDir, trace::TraceLayer};
 use tracing::{info, warn};
@@ -58,6 +58,7 @@ struct AppState {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -110,19 +111,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let mcp = args
-        .mcp_url
-        .as_ref()
-        .and_then(|url| match McpClient::new(url.clone(), api_key.clone()) {
-            Ok(client) => {
-                info!(%url, "MCP client configured");
-                Some(Arc::new(client))
-            }
-            Err(error) => {
-                warn!(%error, "invalid MCP url");
-                None
-            }
-        });
+    let mcp =
+        args.mcp_url
+            .as_ref()
+            .and_then(|url| match McpClient::new(url.clone(), api_key.clone()) {
+                Ok(client) => {
+                    info!(%url, "MCP client configured");
+                    Some(Arc::new(client))
+                }
+                Err(error) => {
+                    warn!(%error, "invalid MCP url");
+                    None
+                }
+            });
 
     let webrtc = match WebRtcHub::new() {
         Ok(hub) => {
@@ -232,13 +233,13 @@ async fn health(State(state): State<AppState>) -> impl IntoResponse {
     Json(serde_json::json!({
         "status": "ok",
         "version": env!("CARGO_PKG_VERSION"),
-        "uptime_ms": state.started.elapsed().as_millis() as u64,
+        "uptime_ms": u64::try_from(state.started.elapsed().as_millis()).unwrap_or(u64::MAX),
         "active_sessions": state.registry.active_count(),
         "provider": state.provider.manifest().id,
         "persistence": state.store.is_some(),
         "safety": state.safety_enabled,
         "mcp": state.mcp.is_some(),
-        "webrtc_peers": state.webrtc.as_ref().map(|h| h.peer_count()).unwrap_or(0),
+        "webrtc_peers": state.webrtc.as_ref().map_or(0, |h| h.peer_count()),
         "gateway_webrtc": state.webrtc.is_some(),
     }))
 }
@@ -253,7 +254,7 @@ async fn meta(State(state): State<AppState>) -> Json<serde_json::Value> {
         "provider_class": state.provider.manifest().provider_class,
         "active_sessions": state.registry.active_count(),
         "sessions_opened_total": state.registry.opened_total(),
-        "uptime_ms": state.started.elapsed().as_millis() as u64,
+        "uptime_ms": u64::try_from(state.started.elapsed().as_millis()).unwrap_or(u64::MAX),
         "server_time_ms": now_ms(),
         "persistence": state.store.is_some(),
         "safety": state.safety_enabled,
@@ -533,7 +534,7 @@ async fn profile_fact_remove(Json(body): Json<serde_json::Value>) -> impl IntoRe
     if let Some(idx) = body
         .get("index")
         .and_then(serde_json::Value::as_u64)
-        .map(|n| n as usize)
+        .map(|n| usize::try_from(n).unwrap_or(usize::MAX))
     {
         return match openlive_provider::profile_remove_fact_at(idx) {
             Ok(p) => (
@@ -592,7 +593,7 @@ async fn profile_fact_update(Json(body): Json<serde_json::Value>) -> impl IntoRe
     let index = body
         .get("index")
         .and_then(serde_json::Value::as_u64)
-        .map(|n| n as usize);
+        .map(|n| usize::try_from(n).unwrap_or(usize::MAX));
     let fact = body
         .get("fact")
         .or_else(|| body.get("text"))
@@ -632,11 +633,11 @@ async fn profile_fact_move(Json(body): Json<serde_json::Value>) -> impl IntoResp
         .get("from")
         .or_else(|| body.get("index"))
         .and_then(serde_json::Value::as_u64)
-        .map(|n| n as usize);
+        .map(|n| usize::try_from(n).unwrap_or(usize::MAX));
     let to = body
         .get("to")
         .and_then(serde_json::Value::as_u64)
-        .map(|n| n as usize);
+        .map(|n| usize::try_from(n).unwrap_or(usize::MAX));
     // Convenience: direction "up" | "down" from index
     let (from, to) = if let (Some(from), Some(to)) = (from, to) {
         (from, to)
@@ -688,7 +689,7 @@ async fn profile_facts_reorder(Json(body): Json<serde_json::Value>) -> impl Into
         .and_then(serde_json::Value::as_array)
         .map(|arr| {
             arr.iter()
-                .filter_map(|v| v.as_u64().map(|n| n as usize))
+                .filter_map(|v| v.as_u64().and_then(|n| usize::try_from(n).ok()))
                 .collect::<Vec<_>>()
         });
     let Some(order) = order else {
@@ -732,35 +733,82 @@ async fn sandbox_status_get() -> impl IntoResponse {
 }
 
 async fn sandbox_list(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
-    let path = body.get("path").and_then(serde_json::Value::as_str).unwrap_or("");
+    let path = body
+        .get("path")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
     match sandbox_list_files(path) {
-        Ok(files) => (StatusCode::OK, Json(serde_json::json!({ "path": path, "files": files }))).into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e }))).into_response(),
+        Ok(files) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "path": path, "files": files })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e })),
+        )
+            .into_response(),
     }
 }
 
 async fn sandbox_read(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
-    let path = body.get("path").and_then(serde_json::Value::as_str).unwrap_or("");
+    let path = body
+        .get("path")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
     match sandbox_read_file(path) {
-        Ok(text) => (StatusCode::OK, Json(serde_json::json!({ "path": path, "text": text }))).into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e }))).into_response(),
+        Ok(text) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "path": path, "text": text })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e })),
+        )
+            .into_response(),
     }
 }
 
 async fn sandbox_write(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
-    let path = body.get("path").and_then(serde_json::Value::as_str).unwrap_or("");
-    let content = body.get("content").and_then(serde_json::Value::as_str).unwrap_or("");
+    let path = body
+        .get("path")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let content = body
+        .get("content")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
     match sandbox_write_file(path, content) {
-        Ok(msg) => (StatusCode::OK, Json(serde_json::json!({ "ok": true, "message": msg }))).into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e }))).into_response(),
+        Ok(msg) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "ok": true, "message": msg })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e })),
+        )
+            .into_response(),
     }
 }
 
 async fn sandbox_delete(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
-    let path = body.get("path").and_then(serde_json::Value::as_str).unwrap_or("");
+    let path = body
+        .get("path")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
     match sandbox_delete_file(path) {
-        Ok(msg) => (StatusCode::OK, Json(serde_json::json!({ "ok": true, "message": msg }))).into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e }))).into_response(),
+        Ok(msg) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "ok": true, "message": msg })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e })),
+        )
+            .into_response(),
     }
 }
 
@@ -952,11 +1000,13 @@ async fn sandbox_screenshot(
     let width = body
         .get("width")
         .and_then(serde_json::Value::as_u64)
-        .unwrap_or(1280) as u32;
+        .and_then(|n| u32::try_from(n).ok())
+        .unwrap_or(1280);
     let height = body
         .get("height")
         .and_then(serde_json::Value::as_u64)
-        .unwrap_or(800) as u32;
+        .and_then(|n| u32::try_from(n).ok())
+        .unwrap_or(800);
     let url = url.to_owned();
     match tokio::task::spawn_blocking(move || {
         openlive_provider::headless_screenshot(&url, width, height)
@@ -1124,7 +1174,7 @@ async fn agent_pending_list() -> impl IntoResponse {
 async fn agent_pool_status(
     axum::extract::Query(q): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> impl IntoResponse {
-    let id = q.get("id").map(String::as_str).unwrap_or("").trim();
+    let id = q.get("id").map_or("", String::as_str).trim();
     if id.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
@@ -1133,7 +1183,11 @@ async fn agent_pool_status(
             .into_response();
     }
     match pool_job_status(id) {
-        Some(st) => (StatusCode::OK, Json(serde_json::to_value(st).unwrap_or_default())).into_response(),
+        Some(st) => (
+            StatusCode::OK,
+            Json(serde_json::to_value(st).unwrap_or_default()),
+        )
+            .into_response(),
         None => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "pool job not found" })),
@@ -1151,12 +1205,7 @@ async fn agent_pool_events(
     use std::convert::Infallible;
     use std::time::Duration;
 
-    let id = q
-        .get("id")
-        .cloned()
-        .unwrap_or_default()
-        .trim()
-        .to_owned();
+    let id = q.get("id").cloned().unwrap_or_default().trim().to_owned();
     if id.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
@@ -1227,10 +1276,8 @@ async fn sandbox_lab() -> impl IntoResponse {
     .into_response()
 }
 
-async fn sandbox_test_run(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> impl IntoResponse {
+#[allow(clippy::too_many_lines)]
+async fn sandbox_test_run(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
     if let Err(response) = require_api_key(&state, &headers) {
         return response;
     }
@@ -1315,7 +1362,7 @@ async fn sandbox_test_run(
     tests.push(serde_json::json!({
         "name": "browse_wikipedia",
         "ok": browse.as_ref().map(|(t, _)| t.to_ascii_lowercase().contains("agent")).unwrap_or(false),
-        "detail": browse.as_ref().map(|(t, c)| format!("{} @ {}", t.chars().take(80).collect::<String>(), c.url)).unwrap_or_else(|e| e.clone()),
+        "detail": browse.as_ref().map_or_else(std::clone::Clone::clone, |(t, c)| format!("{} @ {}", t.chars().take(80).collect::<String>(), c.url)),
     }));
     // 6. Durable profile
     let pname = set_display_name("SelfTestUser");
@@ -1342,10 +1389,13 @@ async fn sandbox_test_run(
     let st = pool_job_status(&started.pool_id);
     tests.push(serde_json::json!({
         "name": "pool_start_async",
-        "ok": st.as_ref().map(|s| s.completed > 0 || s.status == "completed").unwrap_or(false),
+        "ok": st.as_ref().is_some_and(|s| s.completed > 0 || s.status == "completed"),
         "detail": st.map(|s| format!("{} {}/{}", s.status, s.completed, s.total)),
     }));
-    let passed = tests.iter().filter(|t| t["ok"].as_bool() == Some(true)).count();
+    let passed = tests
+        .iter()
+        .filter(|t| t["ok"].as_bool() == Some(true))
+        .count();
     let total = tests.len();
     (
         StatusCode::OK,
@@ -1386,7 +1436,7 @@ async fn agent_pool_run(
         .get("max_agents")
         .or_else(|| body.get("agents"))
         .and_then(serde_json::Value::as_u64)
-        .map(|n| n as usize);
+        .map(|n| usize::try_from(n).unwrap_or(usize::MAX));
     let use_llm = body
         .get("use_llm")
         .and_then(serde_json::Value::as_bool)
@@ -1465,7 +1515,7 @@ async fn agent_pool_start(
         .get("max_agents")
         .or_else(|| body.get("agents"))
         .and_then(serde_json::Value::as_u64)
-        .map(|n| n as usize);
+        .map(|n| usize::try_from(n).unwrap_or(usize::MAX));
     let use_llm = body
         .get("use_llm")
         .and_then(serde_json::Value::as_bool)
@@ -1483,7 +1533,11 @@ async fn agent_pool_start(
         },
         use_llm,
     );
-    (StatusCode::OK, Json(serde_json::to_value(st).unwrap_or_default())).into_response()
+    (
+        StatusCode::OK,
+        Json(serde_json::to_value(st).unwrap_or_default()),
+    )
+        .into_response()
 }
 
 async fn agent_probe(
@@ -1666,8 +1720,7 @@ async fn list_voices(State(state): State<AppState>) -> Json<serde_json::Value> {
     let active = state
         .mock_voice
         .as_ref()
-        .map(MockDuplexProvider::voice)
-        .unwrap_or_else(|| "en_US-lessac-medium".into());
+        .map_or_else(|| "en_US-lessac-medium".into(), MockDuplexProvider::voice);
     let voices: Vec<_> = VOICE_PRESETS
         .iter()
         .map(|(id, name, f0)| {
@@ -1675,7 +1728,7 @@ async fn list_voices(State(state): State<AppState>) -> Json<serde_json::Value> {
                 "id": id,
                 "name": name,
                 "f0": f0,
-                "family": if id.starts_with("en_") { "formant" } else { "formant" },
+                "family": "formant",
                 "previewable": true,
             })
         })
@@ -1745,7 +1798,7 @@ fn apply_llm_body(state: &AppState, body: &serde_json::Value) {
         .and_then(serde_json::Value::as_str)
     {
         if !url.is_empty() {
-            s.base_url = url.to_owned();
+            url.clone_into(&mut s.base_url);
         }
     }
     if let Some(model) = body
@@ -1754,7 +1807,7 @@ fn apply_llm_body(state: &AppState, body: &serde_json::Value) {
         .and_then(serde_json::Value::as_str)
     {
         if !model.is_empty() {
-            s.model = model.to_owned();
+            model.clone_into(&mut s.model);
         }
     }
     if let Some(key) = body
@@ -1773,7 +1826,7 @@ fn apply_llm_body(state: &AppState, body: &serde_json::Value) {
         .and_then(serde_json::Value::as_str)
     {
         if !sys.is_empty() {
-            s.system_prompt = sys.to_owned();
+            sys.clone_into(&mut s.system_prompt);
         }
     }
     state.llm.update_settings(s);
@@ -1781,11 +1834,11 @@ fn apply_llm_body(state: &AppState, body: &serde_json::Value) {
 
 fn base64_encode(bytes: &[u8]) -> String {
     const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
-        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+        let b0 = u32::from(chunk[0]);
+        let b1 = u32::from(chunk.get(1).copied().unwrap_or(0));
+        let b2 = u32::from(chunk.get(2).copied().unwrap_or(0));
         let n = (b0 << 16) | (b1 << 8) | b2;
         out.push(T[((n >> 18) & 63) as usize] as char);
         out.push(T[((n >> 12) & 63) as usize] as char);
@@ -1842,7 +1895,9 @@ async fn session_tasks(
             .into_response();
     };
     match store.list_tasks(session_id) {
-        Ok(tasks) => Json(serde_json::json!({ "session_id": session_id, "tasks": tasks })).into_response(),
+        Ok(tasks) => {
+            Json(serde_json::json!({ "session_id": session_id, "tasks": tasks })).into_response()
+        }
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -1930,7 +1985,10 @@ async fn session_transcript(
                     continue;
                 };
                 let event_type = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                let payload = value.get("payload").cloned().unwrap_or(serde_json::json!({}));
+                let payload = value
+                    .get("payload")
+                    .cloned()
+                    .unwrap_or(serde_json::json!({}));
                 match event_type {
                     "output_text_final" => {
                         if let Some(text) = payload.get("text").and_then(|t| t.as_str()) {
@@ -2024,8 +2082,7 @@ async fn webrtc_offer(
     let prefer_gateway = body
         .get("mode")
         .and_then(serde_json::Value::as_str)
-        .map(|m| m == "gateway" || m == "gateway_native")
-        .unwrap_or(true);
+        .is_none_or(|m| m == "gateway" || m == "gateway_native");
 
     if prefer_gateway {
         if let Some(hub) = &state.webrtc {
@@ -2236,10 +2293,7 @@ async fn realtime(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl I
         })
 }
 
-async fn realtime_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> impl IntoResponse {
+async fn realtime_session(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
     if let Err(response) = require_api_key(&state, &headers) {
         return response;
     }
@@ -2262,6 +2316,7 @@ async fn realtime_session(
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn require_api_key(state: &AppState, headers: &HeaderMap) -> Result<(), axum::response::Response> {
     let Some(expected) = state.api_key.as_deref() else {
         return Ok(());

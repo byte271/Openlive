@@ -1,6 +1,7 @@
 //! Lightweight ASR / typing typo correction for search queries.
 
 /// Correct common speech-to-text and typing mistakes before tools run.
+#[must_use]
 pub fn correct_typos(input: &str) -> String {
     let mut s = input.trim().to_owned();
     if s.is_empty() {

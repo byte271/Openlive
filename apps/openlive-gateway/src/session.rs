@@ -24,8 +24,8 @@ use uuid::Uuid;
 
 use crate::session_registry::SessionRegistry;
 use crate::session_state::{
-    ActiveGeneration, ClientTimeline, LatencyTracker, PlayoutTracker, RepairContext, TelemetryGate,
-    TaskOrchestrator, PendingOutcome,
+    ActiveGeneration, ClientTimeline, LatencyTracker, PendingOutcome, PlayoutTracker,
+    RepairContext, TaskOrchestrator, TelemetryGate,
 };
 use crate::transport::{ServerMessage, WebSocketTransport};
 
@@ -52,8 +52,8 @@ struct SessionCoordinator {
     /// Phase 7: owns task lifecycle, evidence links, and resume buffering.
     task_orchestrator: TaskOrchestrator,
     latest_user_semantic_completion: Option<f32>,
-    /// Latest finalized (or streaming) user transcript for CommitResponse.
-    /// Without this, prompt_hint was only the barge-in repair string (usually empty),
+    /// Latest finalized (or streaming) user transcript for `CommitResponse`.
+    /// Without this, `prompt_hint` was only the barge-in repair string (usually empty),
     /// so the model never saw what the user said.
     latest_user_text: String,
     /// Optional durable store for resume envelopes + task snapshots.
@@ -302,11 +302,10 @@ impl SessionCoordinator {
     ) {
         let now_ms = media_time_us / 1_000;
         let provider_id = self.provider_manifest.id.as_str();
-        let Some(acknowledgement) = self
-            .task_orchestrator
-            .admit(request, Some(provider_id), now_ms)
-        else
-        {
+        let Some(acknowledgement) =
+            self.task_orchestrator
+                .admit(request, Some(provider_id), now_ms)
+        else {
             self.send_error(
                 media_time_us,
                 "task_rejected",
@@ -836,14 +835,12 @@ impl SessionCoordinator {
         match output {
             ProviderOutput::Event(event) => {
                 if self.safety_enabled {
-                    if let Some(handled) = self
+                    if let Some(Some((event_id, event_ref))) = self
                         .apply_safety_to_event(event, generation_id, media_time_us)
                         .await
                     {
-                        if let Some((event_id, event_ref)) = handled {
-                            emitted_event_id = Some(event_id);
-                            emitted_event_ref = Some(event_ref);
-                        }
+                        emitted_event_id = Some(event_id);
+                        emitted_event_ref = Some(event_ref);
                     }
                 } else {
                     let event_id = Uuid::new_v4();
@@ -883,13 +880,8 @@ impl SessionCoordinator {
         // marks become Timing evidence, etc. Tasks bound to other
         // generations are NOT given this evidence.
         if let (Some(event_id), Some(event)) = (emitted_event_id, emitted_event_ref.as_ref()) {
-            self.attach_evidence_to_generation(
-                generation_id,
-                event_id,
-                event,
-                media_time_us,
-            )
-            .await;
+            self.attach_evidence_to_generation(generation_id, event_id, event, media_time_us)
+                .await;
         }
         if is_complete {
             self.engine.mark_response_complete(generation_id);
@@ -1079,22 +1071,20 @@ impl SessionCoordinator {
                     SafetyDisposition::Holdback => Some(None),
                     SafetyDisposition::Pass if decision.release.is_empty() => Some(None),
                     SafetyDisposition::Pass => {
-                        let event = RealtimeEvent::OutputTextDelta(
-                            openlive_protocol::OutputTextDelta {
+                        let event =
+                            RealtimeEvent::OutputTextDelta(openlive_protocol::OutputTextDelta {
                                 delta: decision.release,
-                            },
-                        );
+                            });
                         let event_id = self
                             .emit_provider_event(event.clone(), generation_id, media_time_us)
                             .await;
                         Some(Some((event_id, event)))
                     }
                     SafetyDisposition::Intervene => {
-                        let event = RealtimeEvent::OutputTextFinal(
-                            openlive_protocol::OutputTextFinal {
+                        let event =
+                            RealtimeEvent::OutputTextFinal(openlive_protocol::OutputTextFinal {
                                 text: decision.release,
-                            },
-                        );
+                            });
                         let event_id = self
                             .emit_provider_event(event.clone(), generation_id, media_time_us)
                             .await;
@@ -1122,11 +1112,10 @@ impl SessionCoordinator {
                     decision.release = final_text.text;
                 }
                 if decision.disposition == SafetyDisposition::Intervene {
-                    let event = RealtimeEvent::OutputTextFinal(
-                        openlive_protocol::OutputTextFinal {
+                    let event =
+                        RealtimeEvent::OutputTextFinal(openlive_protocol::OutputTextFinal {
                             text: decision.release,
-                        },
-                    );
+                        });
                     let event_id = self
                         .emit_provider_event(event.clone(), generation_id, media_time_us)
                         .await;
@@ -1178,6 +1167,7 @@ impl SessionCoordinator {
         event_id
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn persist_task_snapshot(
         &self,
         task_id: Uuid,
@@ -1332,34 +1322,35 @@ fn client_stream_id(event: &RealtimeEvent) -> Option<&'static str> {
     }
 }
 
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 fn check_semantic_completion(text: &str) -> f32 {
     let trimmed = text.trim().to_lowercase();
     if trimmed.is_empty() {
         return 0.0;
     }
     let incomplete_trail = [
-        "and", "or", "but", "so", "because", "if", "when", "although", "though", "since",
-        "while", "unless", "until", "for", "as", "whereas", "lest", "than", "that", "whether",
-        "who", "which", "whose", "whom", "what", "where", "how", "why", "the", "a", "an", "my",
-        "your", "his", "her", "its", "our", "their", "this", "that", "these", "those"
+        "and", "or", "but", "so", "because", "if", "when", "although", "though", "since", "while",
+        "unless", "until", "for", "as", "whereas", "lest", "than", "that", "whether", "who",
+        "which", "whose", "whom", "what", "where", "how", "why", "the", "a", "an", "my", "your",
+        "his", "her", "its", "our", "their", "this", "that", "these", "those",
     ];
-    
+
     let words: Vec<&str> = trimmed.split_whitespace().collect();
     if words.is_empty() {
         return 0.0;
     }
-    
+
     let last_word = words.last().copied().unwrap_or("");
     if incomplete_trail.contains(&last_word) {
         return 0.1;
     }
-    
+
     if trimmed.ends_with('.') || trimmed.ends_with('?') || trimmed.ends_with('!') {
         return 0.95;
     }
-    
-    let len_score = (words.len() as f32 / 5.0).clamp(0.0, 1.0);
-    len_score.mul_add(0.4, 0.5)
+
+    let len_score = ((words.len() as f64) / 25.0).clamp(0.0, 1.0);
+    len_score.mul_add(0.4, 0.5) as f32
 }
 
 fn provider_stream_id(event: &RealtimeEvent) -> &'static str {
@@ -1370,12 +1361,12 @@ fn provider_stream_id(event: &RealtimeEvent) -> &'static str {
         RealtimeEvent::LatencyMark(_) => "telemetry",
         RealtimeEvent::EndpointingPrediction(_) => "endpointing",
         RealtimeEvent::CapabilitySelected(_) => "capability",
-        RealtimeEvent::VisualInputAccepted(_) | RealtimeEvent::VisualInputRejected(_) => "visual",
+        RealtimeEvent::VisualInputAccepted(_)
+        | RealtimeEvent::VisualInputRejected(_)
+        | RealtimeEvent::VisualCard(_) => "visual",
         // Phase 7: gateway-emitted task lifecycle and evidence events.
-        RealtimeEvent::TaskAcknowledged(_)
-        | RealtimeEvent::TaskOutcome(_) => "tasks",
+        RealtimeEvent::TaskAcknowledged(_) | RealtimeEvent::TaskOutcome(_) => "tasks",
         RealtimeEvent::EvidenceLink(_) => "evidence",
-        RealtimeEvent::VisualCard(_) => "visual",
         _ => "provider",
     }
 }

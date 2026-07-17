@@ -1,5 +1,5 @@
 /**
- * OpenLive 26.7.15 — RNNoise-style spectral noise suppressor (AudioWorklet).
+ * OpenLive 26.7.16 — RNNoise-style spectral noise suppressor (AudioWorklet).
  *
  * Processes classic RNNoise frame size: 480 samples (10 ms at 48 kHz).
  * At other sample rates the frame size is scaled to ~10 ms.

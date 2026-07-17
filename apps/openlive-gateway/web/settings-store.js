@@ -1,5 +1,5 @@
 /**
- * Openlive 26.7.15 — settings-store.js
+ * Openlive 26.7.16 — settings-store.js
  *
  * Thin, typed wrapper over localStorage that persists user UI preferences
  * under a single namespaced key. All v1.2 keys live under `openlive.v1.2.*`.
@@ -12,7 +12,7 @@
 const KEY = "openlive.v1.3.settings";
 
 export const DEFAULT_SETTINGS = Object.freeze({
-  // Minimal black is the default live surface (v26.7.15).
+  // Minimal black is the default live surface (v26.7.16).
   theme: "minimal",
   motionScale: 1,
   showLatency: true,
@@ -26,6 +26,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   modeId: "open",
   layout: "focused",
   onboardingDismissed: true,
+  fullscreen: false,
 });
 
 const VALIDATORS = {
@@ -66,6 +67,8 @@ const VALIDATORS = {
     ["focused", "inline"].includes(value) ? value : DEFAULT_SETTINGS.layout,
   onboardingDismissed: (value) =>
     typeof value === "boolean" ? value : DEFAULT_SETTINGS.onboardingDismissed,
+  fullscreen: (value) =>
+    typeof value === "boolean" ? value : DEFAULT_SETTINGS.fullscreen,
 };
 
 /**

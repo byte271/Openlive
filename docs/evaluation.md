@@ -1,4 +1,4 @@
-# Evaluation and latency telemetry (v26.7.15)
+# Evaluation and latency telemetry (v26.7.16)
 
 Openlive does not claim experiential parity without measurements. Protocol 1.0 emits generation-scoped `latency_mark` events from the gateway's monotonic clock:
 

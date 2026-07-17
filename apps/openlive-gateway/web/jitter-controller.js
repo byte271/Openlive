@@ -1,5 +1,5 @@
 /**
- * OpenLive 26.7.15 — adaptive jitter buffer controller (statistics-based target).
+ * OpenLive 26.7.16 — adaptive jitter buffer controller (statistics-based target).
  *
  * Tracks inter-arrival variance (when the main thread reports frame arrivals)
  * and expands/contracts the playout buffer like a lightweight WebRTC jitter

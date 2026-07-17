@@ -1,4 +1,4 @@
-//! Internal OpenLive agent — clean intent routing + tools + LLM.
+//! Internal `OpenLive` agent — clean intent routing + tools + LLM.
 //! Design:
 //!   identity → local intro
 //!   math/time/explicit-search → deterministic tools (no model needed)
@@ -15,9 +15,9 @@ use thiserror::Error;
 use crate::llm_bridge::{choice_message, message_tool_calls, LlmBridge, LlmError};
 use crate::tools::{
     browse_site, browse_url, identity_reply, looks_like_chitchat, looks_like_identity,
-    looks_like_math, save_lab_note,
-    looks_like_search, looks_like_time, public_llm_answer, public_tool_answer, search_query_from,
-    simple_eval, soft_no_answer, try_builtin_tools, web_search_with_sources, Citation,
+    looks_like_math, looks_like_search, looks_like_time, public_llm_answer, public_tool_answer,
+    save_lab_note, search_query_from, simple_eval, soft_no_answer, try_builtin_tools,
+    web_search_with_sources, Citation,
 };
 use crate::typo::correct_typos;
 
@@ -87,6 +87,7 @@ pub enum AgentKind {
 }
 
 impl AgentKind {
+    #[must_use]
     pub fn parse(s: &str) -> Self {
         match s.trim().to_ascii_lowercase().as_str() {
             "none" | "off" | "disabled" => Self::None,
@@ -138,7 +139,7 @@ pub struct AgentResult {
     /// Agent class used for this turn (tool allow-list).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_class: Option<String>,
-    /// Multi-agent pool id when research_pool / deep mode ran.
+    /// Multi-agent pool id when `research_pool` / deep mode ran.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pool_id: Option<String>,
 }
@@ -185,6 +186,7 @@ impl AgentClient {
     }
 
     /// Start pool in background; returns immediately with live-progress id.
+    #[must_use]
     pub fn start_pool_job(
         &self,
         req: crate::agent_pool::PoolRequest,
@@ -194,10 +196,7 @@ impl AgentClient {
     }
 
     /// Fetch a public page (sandbox browser foundation).
-    pub async fn browse_page(
-        &self,
-        url: &str,
-    ) -> Result<(String, crate::tools::Citation), String> {
+    pub async fn browse_page(&self, url: &str) -> Result<(String, crate::tools::Citation), String> {
         browse_url(&self.http, url).await
     }
 
@@ -289,7 +288,7 @@ impl AgentClient {
             self.bridge.patch_settings(|s| {
                 if let Some(u) = &request.base_url {
                     if !u.is_empty() {
-                        s.base_url = u.clone();
+                        s.base_url.clone_from(u);
                     }
                 }
                 if let Some(k) = &request.api_key {
@@ -297,7 +296,7 @@ impl AgentClient {
                 }
                 if let Some(m) = &request.model {
                     if !m.is_empty() {
-                        s.model = m.clone();
+                        s.model.clone_from(m);
                     }
                 }
             });
@@ -361,12 +360,9 @@ impl AgentClient {
                 // Persist to durable memory (best-effort) — skip if waiting for confirm.
                 if pending.is_none() {
                     if let Some(ref sid) = session_id {
-                        let _ = crate::session_context::append_and_context(
-                            sid, "user", &intent, 8,
-                        );
-                        let _ = crate::session_context::append_and_context(
-                            sid, "assistant", &text, 8,
-                        );
+                        let _ = crate::session_context::append_and_context(sid, "user", &intent, 8);
+                        let _ =
+                            crate::session_context::append_and_context(sid, "assistant", &text, 8);
                     }
                     let mut tags = class.memory_tags();
                     tags.push("turn".into());
@@ -486,7 +482,13 @@ impl AgentClient {
 
         // ── 1. Identity (never search) ───────────────────────────────────
         if looks_like_identity(intent) {
-            return Ok((identity_reply(intent), vec!["identity".into()], vec![], None, None));
+            return Ok((
+                identity_reply(intent),
+                vec!["identity".into()],
+                vec![],
+                None,
+                None,
+            ));
         }
 
         // ── 1a. Continuity from session dialog without requiring an LLM ──
@@ -581,7 +583,7 @@ impl AgentClient {
                             vec!["web_search".into()],
                             vec![],
                             None,
-                                None,
+                            None,
                         ));
                     }
                 }
@@ -636,7 +638,7 @@ impl AgentClient {
                         vec!["web_search".into()],
                         sources,
                         None,
-                                            None,
+                        None,
                     ));
                 }
             }
@@ -645,17 +647,21 @@ impl AgentClient {
             return Ok((public_tool_answer(intent, &raw), tools, vec![], None, None));
         }
         if looks_like_chitchat(intent) {
-            return Ok((identity_reply(intent), vec!["identity".into()], vec![], None, None));
+            return Ok((
+                identity_reply(intent),
+                vec!["identity".into()],
+                vec![],
+                None,
+                None,
+            ));
         }
 
-        Err(AgentError::Msg(
-            if crate::tools::has_cjk(intent) {
-                "当前没有可用的语言模型。请在设置里配置 API key，或直接说：搜索苹果、现在几点、计算 12+30。"
+        Err(AgentError::Msg(if crate::tools::has_cjk(intent) {
+            "当前没有可用的语言模型。请在设置里配置 API key，或直接说：搜索苹果、现在几点、计算 12+30。"
                     .into()
-            } else {
-                "No language model configured. Open Settings, add an API key, or try: search Apple, what time is it, 12+30.".into()
-            },
-        ))
+        } else {
+            "No language model configured. Open Settings, add an API key, or try: search Apple, what time is it, 12+30.".into()
+        }))
     }
 
     /// One LLM round with tools; execute calls; return spoken answer from tool facts or model text.
@@ -692,7 +698,13 @@ impl AgentClient {
             .iter()
             .rev()
             .take(6)
-            .map(|e| format!("{}: {}", e.role, e.text.chars().take(120).collect::<String>()))
+            .map(|e| {
+                format!(
+                    "{}: {}",
+                    e.role,
+                    e.text.chars().take(120).collect::<String>()
+                )
+            })
             .collect::<Vec<_>>()
             .into_iter()
             .rev()
@@ -717,14 +729,16 @@ impl AgentClient {
             .await
             .map_err(AgentError::from)?;
 
-        let message = choice_message(&raw).ok_or_else(|| {
-            AgentError::Msg("empty model message".into())
-        })?;
+        let message =
+            choice_message(&raw).ok_or_else(|| AgentError::Msg("empty model message".into()))?;
 
         let calls = message_tool_calls(&message);
         if calls.is_empty() {
             // Model answered without tools.
-            if let Some(content) = message.get("content").and_then(Value::as_str).map(str::trim)
+            if let Some(content) = message
+                .get("content")
+                .and_then(Value::as_str)
+                .map(str::trim)
             {
                 if !content.is_empty() {
                     if let Some(safe) = public_llm_answer(content) {
@@ -776,13 +790,7 @@ impl AgentClient {
 
         // Destructive action awaiting user confirmation — don't invent a spoken answer over it.
         if let Some(p) = pending.clone() {
-            return Ok((
-                p.message.clone(),
-                tools_used,
-                sources,
-                Some(p),
-                None,
-            ));
+            return Ok((p.message.clone(), tools_used, sources, Some(p), None));
         }
 
         let joined = tool_blobs.join("\n\n");
@@ -970,8 +978,10 @@ impl AgentClient {
                     return ("error: empty url".into(), vec![], None);
                 }
                 let url = url.to_owned();
-                match tokio::task::spawn_blocking(move || crate::headless_browser::headless_pdf(&url))
-                    .await
+                match tokio::task::spawn_blocking(move || {
+                    crate::headless_browser::headless_pdf(&url)
+                })
+                .await
                 {
                     Ok(Ok(pdf)) => (
                         format!(
@@ -1070,16 +1080,12 @@ impl AgentClient {
             "get_time" => (
                 try_builtin_tools(&self.http, "what time is it")
                     .await
-                    .map(|(a, _)| a)
-                    .unwrap_or_else(|| "time unavailable".into()),
+                    .map_or_else(|| "time unavailable".into(), |(a, _)| a),
                 vec![],
                 None,
             ),
             "calculator" => {
-                let expr = args
-                    .get("expression")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
+                let expr = args.get("expression").and_then(Value::as_str).unwrap_or("");
                 let text = match simple_eval(expr) {
                     Ok(v) => format!("{expr} = {v}"),
                     Err(e) => format!("calc error: {e}"),
@@ -1109,7 +1115,11 @@ impl AgentClient {
                 (text, vec![], None)
             }
             "write_file" => {
-                let path = args.get("path").and_then(Value::as_str).unwrap_or("").trim();
+                let path = args
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim();
                 let content = args.get("content").and_then(Value::as_str).unwrap_or("");
                 if path.is_empty() {
                     return ("error: empty path".into(), vec![], None);
@@ -1138,7 +1148,11 @@ impl AgentClient {
                 (text, vec![], None)
             }
             "delete_file" => {
-                let path = args.get("path").and_then(Value::as_str).unwrap_or("").trim();
+                let path = args
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim();
                 if path.is_empty() {
                     return ("error: empty path".into(), vec![], None);
                 }
@@ -1245,7 +1259,10 @@ fn answer_from_dialog_context(intent: &str, dialog_ctx: &str) -> Option<String> 
         } else if lower.starts_with("remember i ") {
             format!("I {}", intent["remember i ".len()..].trim())
         } else if let Some(rest) = intent.strip_prefix("记住") {
-            rest.trim().trim_start_matches(['，', ',', '：', ':']).trim().to_owned()
+            rest.trim()
+                .trim_start_matches(['，', ',', '：', ':'])
+                .trim()
+                .to_owned()
         } else {
             fact
         };
@@ -1333,17 +1350,12 @@ fn extract_stated_name(intent: &str) -> Option<String> {
     let lower = t.to_ascii_lowercase();
     for prefix in ["my name is ", "i am ", "i'm ", "im "] {
         if let Some(rest) = lower.strip_prefix(prefix) {
-            let name = rest
-                .trim()
-                .trim_end_matches(|c: char| matches!(c, '.' | '!' | '?' | ','))
-                .trim();
+            let name = rest.trim().trim_end_matches(['.', '!', '?', ',']).trim();
             if name.len() >= 2 && name.len() <= 40 {
                 // Preserve original casing from intent
                 let start = prefix.len();
                 let raw = t.get(start..).unwrap_or(name).trim();
-                let raw = raw
-                    .trim_end_matches(|c: char| matches!(c, '.' | '!' | '?' | ','))
-                    .trim();
+                let raw = raw.trim_end_matches(['.', '!', '?', ',']).trim();
                 if !raw.is_empty() {
                     return Some(raw.to_owned());
                 }
@@ -1351,7 +1363,9 @@ fn extract_stated_name(intent: &str) -> Option<String> {
         }
     }
     if let Some(rest) = t.strip_prefix("我叫") {
-        let name = rest.trim().trim_end_matches(['。', '！', '？', '.', '!', '?']);
+        let name = rest
+            .trim()
+            .trim_end_matches(['。', '！', '？', '.', '!', '?']);
         if !name.is_empty() && name.chars().count() <= 20 {
             return Some(name.to_owned());
         }
@@ -1375,10 +1389,7 @@ fn find_name_in_context(ctx: &str) -> Option<String> {
             .find("name is ")
             .map(|i| &content[i + 8..])
         {
-            let name = rest
-                .trim()
-                .trim_end_matches(|c: char| matches!(c, '.' | '!' | '?' | ','))
-                .trim();
+            let name = rest.trim().trim_end_matches(['.', '!', '?', ',']).trim();
             if name.len() >= 2 && name.len() <= 40 && !name.contains("khan") {
                 return Some(name.to_owned());
             }
@@ -1430,8 +1441,7 @@ fn try_voice_confirm(intent: &str) -> Option<AgentResult> {
         || t == "please do";
     let deny = matches!(
         t.as_str(),
-        "no"
-            | "n"
+        "no" | "n"
             | "cancel"
             | "deny"
             | "stop"
@@ -1525,9 +1535,7 @@ fn reply_with_class(task_id: String, mut r: AgentResult, class_id: &str) -> Agen
     r
 }
 
-fn pool_sources_from_results(
-    results: &[crate::agent_pool::PoolAgentResult],
-) -> Vec<Citation> {
+fn pool_sources_from_results(results: &[crate::agent_pool::PoolAgentResult]) -> Vec<Citation> {
     results
         .iter()
         .filter_map(|r| {
@@ -1571,8 +1579,7 @@ fn tool_definitions_for(class: crate::agent_class::AgentClass) -> Vec<Value> {
         .filter(|t| {
             t.pointer("/function/name")
                 .and_then(Value::as_str)
-                .map(|n| class.allows(n))
-                .unwrap_or(false)
+                .is_some_and(|n| class.allows(n))
         })
         .collect()
 }

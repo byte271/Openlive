@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.tauri.app/config/2.0.0",
+  "productName": "OpenLive",
+  "version": "26.7.16",
+  "identifier": "com.openlive.desktop",
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "cargo build -p openlive-gateway --release",
+    "frontendDist": "http://127.0.0.1:12345",
+    "devUrl": "http://127.0.0.1:12345"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null,
+      "capabilities": [
+        {
+          "identifier": "default-capability",
+          "windows": ["main"],
+          "permissions": [
+            "core:default"
+          ]
+        }
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "dmg", "app"],
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
+    "resources": {
+      "target/release/openlive-gateway-bundled.exe": ".",
+      "../openlive-gateway/web": "web"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    },
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "10.13",
+      "entitlements": ""
+    }
+  }
+}

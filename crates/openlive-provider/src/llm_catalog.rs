@@ -130,7 +130,12 @@ pub fn llm_provider_catalog() -> Vec<LlmProviderPreset> {
             description: "Fully local open models via Ollama OpenAI shim.".into(),
             base_url: "http://127.0.0.1:11434/v1".into(),
             default_model: "llama3.2".into(),
-            models: vec!["llama3.2".into(), "mistral".into(), "qwen2.5".into(), "gemma2".into()],
+            models: vec![
+                "llama3.2".into(),
+                "mistral".into(),
+                "qwen2.5".into(),
+                "gemma2".into(),
+            ],
             free_tier: true,
             docs_url: "https://ollama.com/".into(),
             auth_hint: "Usually no key (local)".into(),
@@ -174,12 +179,14 @@ pub fn llm_provider_catalog() -> Vec<LlmProviderPreset> {
         LlmProviderPreset {
             id: "custom".into(),
             name: "Custom".into(),
-            description: "Any OpenAI-compatible base URL. Enter base URL, then pick or type a model id.".into(),
+            description:
+                "Any OpenAI-compatible base URL. Enter base URL, then pick or type a model id."
+                    .into(),
             base_url: "http://127.0.0.1:8000/v1".into(),
             default_model: "default".into(),
             models: vec![],
             free_tier: true,
-            docs_url: "".into(),
+            docs_url: String::new(),
             auth_hint: "Provider-specific API key if required".into(),
         },
     ]

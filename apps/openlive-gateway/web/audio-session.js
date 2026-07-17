@@ -9,7 +9,7 @@ import {
 import { EmotionDetector } from "./emotion-detector.js";
 
 /**
- * Openlive 26.7.15 — AudioSession
+ * Openlive 26.7.16 — AudioSession
  *
  * Owns the AudioContext, the microphone capture worklet, the playback
  * worklet, and the output gain node. Bridges binary PCM frames between

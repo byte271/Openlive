@@ -1,5 +1,5 @@
 /**
- * Openlive 26.7.15 — ui.js
+ * Openlive 26.7.16 — ui.js
  *
  * DOM binding layer. Resolves elements once, exposes mutation helpers, and
  * keeps the rest of the codebase free of `document.querySelector` calls.
@@ -45,6 +45,7 @@ const elements = {
   motionRange: query("#motionRange"),
   motionValue: query("#motionValue"),
   latencyToggle: query("#latencyToggle"),
+  fullscreenToggle: query("#fullscreenToggle"),
   debug: query("#debug"),
   closeDebug: query("#closeDebug"),
   diagnostics: query("#diagnostics"),
@@ -103,6 +104,11 @@ const elements = {
   setupWizard: query("#setupWizard"),
   setupDisplayName: query("#setupDisplayName"),
   setupVoice: query("#setupVoice"),
+  setupVoiceSwipe: query("#setupVoiceSwipe"),
+  voiceDots: query("#voiceDots"),
+  setupTitle: query("#setupTitle"),
+  setupSubtitle: query("#setupSubtitle"),
+  setupSteps: query("#setupSteps"),
   setupStripFillers: query("#setupStripFillers"),
   setupBackchannels: query("#setupBackchannels"),
   setupModelUrl: query("#setupModelUrl"),
@@ -181,6 +187,7 @@ export const controls = {
   themeSelect: elements.themeSelect,
   motionRange: elements.motionRange,
   latencyToggle: elements.latencyToggle,
+  fullscreenToggle: elements.fullscreenToggle,
   voice: elements.voice,
   mode: elements.mode,
   instructions: elements.instructions,
@@ -203,6 +210,11 @@ export const controls = {
   setupWizard: elements.setupWizard,
   setupDisplayName: elements.setupDisplayName,
   setupVoice: elements.setupVoice,
+  setupVoiceSwipe: elements.setupVoiceSwipe,
+  voiceDots: elements.voiceDots,
+  setupTitle: elements.setupTitle,
+  setupSubtitle: elements.setupSubtitle,
+  setupSteps: elements.setupSteps,
   setupStripFillers: elements.setupStripFillers,
   setupBackchannels: elements.setupBackchannels,
   setupModelUrl: elements.setupModelUrl,

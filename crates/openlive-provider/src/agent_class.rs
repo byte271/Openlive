@@ -18,6 +18,7 @@ pub enum AgentClass {
 }
 
 impl AgentClass {
+    #[must_use]
     pub fn parse(s: &str) -> Self {
         match s.trim().to_ascii_lowercase().as_str() {
             "researcher" | "research" => Self::Researcher,
@@ -27,6 +28,7 @@ impl AgentClass {
         }
     }
 
+    #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::General => "general",
@@ -37,11 +39,13 @@ impl AgentClass {
     }
 
     /// Memory tags applied when this class writes durable memory.
+    #[must_use]
     pub fn memory_tags(self) -> Vec<String> {
         vec!["agent".into(), self.as_str().into()]
     }
 
     /// Tools this class may invoke. Empty deny = allow all known tools.
+    #[must_use]
     pub fn allowed_tools(self) -> &'static [&'static str] {
         match self {
             Self::General => &[
@@ -96,27 +100,24 @@ impl AgentClass {
         }
     }
 
+    #[must_use]
     pub fn allows(self, tool: &str) -> bool {
-        self.allowed_tools().iter().any(|t| *t == tool)
+        self.allowed_tools().contains(&tool)
     }
 
+    #[must_use]
     pub fn catalog() -> Vec<serde_json::Value> {
         use serde_json::json;
-        [
-            Self::General,
-            Self::Researcher,
-            Self::Coder,
-            Self::Safe,
-        ]
-        .into_iter()
-        .map(|c| {
-            json!({
-                "id": c.as_str(),
-                "tools": c.allowed_tools(),
-                "memory_tags": c.memory_tags(),
+        [Self::General, Self::Researcher, Self::Coder, Self::Safe]
+            .into_iter()
+            .map(|c| {
+                json!({
+                    "id": c.as_str(),
+                    "tools": c.allowed_tools(),
+                    "memory_tags": c.memory_tags(),
+                })
             })
-        })
-        .collect()
+            .collect()
     }
 }
 

@@ -34,3 +34,56 @@ jobs:
           cache: npm
           cache-dependency-path: apps/openlive-gateway/web/package.json
       - run: npm test
+
+  desktop-build:
+    name: desktop-build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            apps/openlive-desktop
+
+      - name: Cache Tauri CLI
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-tauri
+            ~/.cargo/bin/cargo-tauri.exe
+          key: cargo-tauri-2.11.4-${{ runner.os }}
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version 2.11.4
+
+      - name: Lint desktop app
+        working-directory: apps/openlive-desktop
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build openlive-gateway
+        run: cargo build -p openlive-gateway --release
+
+      - name: Build desktop app
+        working-directory: apps/openlive-desktop
+        run: cargo tauri build --verbose
+
+      - name: Upload desktop bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openlive-desktop-${{ matrix.os }}
+          path: apps/openlive-desktop/target/release/bundle/
+          if-no-files-found: error

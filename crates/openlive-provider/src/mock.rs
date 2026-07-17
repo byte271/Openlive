@@ -23,8 +23,8 @@ use crate::{
         looks_like_search, public_llm_answer, public_tool_answer, search_query_from,
         soft_no_answer, try_builtin_tools, web_search,
     },
-    LlmBridge, ProviderEmission, ProviderError, ProviderInput,
-    ProviderOutput, ProviderSession, ProviderSessionRequest, RealtimeProvider,
+    LlmBridge, ProviderEmission, ProviderError, ProviderInput, ProviderOutput, ProviderSession,
+    ProviderSessionRequest, RealtimeProvider,
 };
 
 /// Built-in formant voice profiles (audible differences offline).
@@ -74,7 +74,8 @@ impl MockDuplexProvider {
 
     pub fn set_voice(&self, voice_id: &str) {
         if let Ok(mut g) = self.voice_id.write() {
-            *g = voice_id.to_owned();
+            g.clear();
+            g.push_str(voice_id);
         }
     }
 
@@ -82,15 +83,18 @@ impl MockDuplexProvider {
     pub fn voice(&self) -> String {
         self.voice_id
             .read()
-            .map(|g| g.clone())
-            .unwrap_or_else(|_| "en_US-lessac-medium".into())
+            .map_or_else(|_| "en_US-lessac-medium".into(), |g| g.clone())
     }
 }
 
 /// Render PCM i16 LE preview for a voice (offline formant).
 #[must_use]
 pub fn preview_voice_pcm(voice_id: &str, text: &str, sample_rate: u32) -> Vec<u8> {
-    let sample_rate = if sample_rate == 0 { 24_000 } else { sample_rate };
+    let sample_rate = if sample_rate == 0 {
+        24_000
+    } else {
+        sample_rate
+    };
     let frame_ms = 20u16;
     let samples_per_frame =
         usize::try_from(u64::from(sample_rate) * u64::from(frame_ms) / 1_000).unwrap_or(480);
@@ -114,16 +118,14 @@ fn voice_display_name(id: &str) -> &str {
     VOICE_PRESETS
         .iter()
         .find(|(vid, _, _)| *vid == id)
-        .map(|(_, name, _)| *name)
-        .unwrap_or(id)
+        .map_or(id, |(_, name, _)| *name)
 }
 
 fn voice_f0(id: &str) -> f32 {
     VOICE_PRESETS
         .iter()
         .find(|(vid, _, _)| *vid == id)
-        .map(|(_, _, f0)| *f0)
-        .unwrap_or(165.0)
+        .map_or(165.0, |(_, _, f0)| *f0)
 }
 
 #[async_trait]
@@ -189,8 +191,7 @@ impl RealtimeProvider for MockDuplexProvider {
                         active = Some((generation_id, cancellation.clone()));
                         let voice = voice_id
                             .read()
-                            .map(|g| g.clone())
-                            .unwrap_or_else(|_| "en_US-lessac-medium".into());
+                            .map_or_else(|_| "en_US-lessac-medium".into(), |g| g.clone());
                         tokio::spawn(generate_mock_response(
                             output_sender.clone(),
                             generation_id,
@@ -468,8 +469,7 @@ impl FormantSynth {
                 self.unit_sample = 0;
                 if self.unit_index < self.units.len() {
                     let next = self.units[self.unit_index];
-                    self.unit_samples =
-                        (next.duration_ms as f32 * 0.001 * self.sample_rate) as u64;
+                    self.unit_samples = (next.duration_ms as f32 * 0.001 * self.sample_rate) as u64;
                 }
                 out.push(0);
                 self.sample_index += 1;
@@ -479,9 +479,8 @@ impl FormantSynth {
             let t = self.sample_index as f32 / self.sample_rate;
             // Mild F0 contour (statement fall).
             let progress = self.unit_index as f32 / self.units.len().max(1) as f32;
-            let f0 = self.f0 * (1.05 - 0.12 * progress)
-                + 4.0 * (t * 3.1).sin()
-                + 2.0 * (t * 7.7).sin();
+            let f0 =
+                self.f0 * (1.05 - 0.12 * progress) + 4.0 * (t * 3.1).sin() + 2.0 * (t * 7.7).sin();
 
             let sample = if unit.voiced {
                 let excitation = buzz(t, f0);
@@ -660,7 +659,9 @@ async fn craft_spoken_reply(prompt: &str, llm: Option<&LlmBridge>) -> String {
         .build()
         .ok();
     if let Some(client) = http.as_ref() {
-        if looks_like_search(user) || looks_like_fact_query(user) || user.chars().any(|c| c.is_ascii_digit())
+        if looks_like_search(user)
+            || looks_like_fact_query(user)
+            || user.chars().any(|c| c.is_ascii_digit())
         {
             if let Some((raw, _tools)) = try_builtin_tools(client, user).await {
                 return sanitize_spoken(&public_tool_answer(user, &raw));
@@ -714,8 +715,7 @@ fn sanitize_spoken(text: &str) -> String {
     let mut t = text
         .replace("**", "")
         .replace("##", "")
-        .replace('`', "")
-        .replace('*', "")
+        .replace(['`', '*'], "")
         .replace('_', " ");
     // Keep Latin + CJK + common punctuation (Chinese replies must not be stripped).
     t = t
@@ -756,20 +756,10 @@ fn sanitize_spoken(text: &str) -> String {
         })
         .collect();
     // Don't collapse CJK with split_whitespace-only (no spaces between chars).
-    if t.chars().any(|c| !c.is_ascii()) {
-        t = t.split_whitespace().collect::<Vec<_>>().join(" ");
-    } else {
-        t = t.split_whitespace().collect::<Vec<_>>().join(" ");
-    }
+    t = t.split_whitespace().collect::<Vec<_>>().join(" ");
     // Drop leading planning crumbs if any slipped through.
     for lead in [
-        "Got it ",
-        "Got it. ",
-        "Okay so ",
-        "Ok so ",
-        "Alright ",
-        "Sure, ",
-        "Sure ",
+        "Got it ", "Got it. ", "Okay so ", "Ok so ", "Alright ", "Sure, ", "Sure ",
     ] {
         if let Some(rest) = t.strip_prefix(lead) {
             // Only strip when the rest still looks like planning.

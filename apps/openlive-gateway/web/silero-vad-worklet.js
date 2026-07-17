@@ -1,5 +1,5 @@
 /**
- * OpenLive 26.7.15 — Silero-style voice activity detector (AudioWorklet).
+ * OpenLive 26.7.16 — Silero-style voice activity detector (AudioWorklet).
  *
  * Emits speech probability for ~32 ms frames (512 samples @ 16 kHz,
  * scaled to the AudioContext sample rate). Feature path is a compact

@@ -4,7 +4,7 @@ import {
 } from "./jitter-controller.js";
 
 /**
- * OpenLive 26.7.15 — playback worklet (adaptive jitter + packet-loss concealment).
+ * OpenLive 26.7.16 — playback worklet (adaptive jitter + packet-loss concealment).
  *
  * On underflow while a generation is still streaming, synthesizes a short
  * PLC frame from recent history instead of hard silence — closer to WebRTC

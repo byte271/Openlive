@@ -63,7 +63,8 @@ fn purge(map: &mut HashMap<String, Entry>) {
     }
 }
 
-/// Queue a write that would overwrite an existing file (or any write if force_confirm).
+/// Queue a write that would overwrite an existing file (or any write if `force_confirm`).
+#[must_use]
 pub fn queue_write_file(path: &str, content: &str, reason: &str) -> PendingAction {
     let preview: String = content.chars().take(200).collect();
     let action = PendingAction {
@@ -88,6 +89,7 @@ pub fn queue_write_file(path: &str, content: &str, reason: &str) -> PendingActio
     action
 }
 
+#[must_use]
 pub fn queue_delete_file(path: &str) -> PendingAction {
     let action = PendingAction {
         id: Uuid::new_v4().to_string(),
@@ -117,12 +119,14 @@ pub fn take(id: &str) -> Option<PendingAction> {
     g.remove(id).map(|e| e.action)
 }
 
+#[must_use]
 pub fn peek(id: &str) -> Option<PendingAction> {
     let mut g = store().lock().ok()?;
     purge(&mut g);
     g.get(id).map(|e| e.action.clone())
 }
 
+#[must_use]
 pub fn list_pending() -> Vec<PendingAction> {
     let Ok(mut g) = store().lock() else {
         return vec![];
@@ -147,5 +151,7 @@ pub fn execute_approved(id: &str) -> Result<String, String> {
 
 /// Reject (drop) a pending action.
 pub fn reject(id: &str) -> Result<(), String> {
-    take(id).map(|_| ()).ok_or_else(|| "pending action not found or expired".into())
+    take(id)
+        .map(|_| ())
+        .ok_or_else(|| "pending action not found or expired".into())
 }

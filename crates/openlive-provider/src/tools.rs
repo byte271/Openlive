@@ -1,5 +1,6 @@
 //! Built-in agent tools shared by the agent API and the voice path.
 
+use std::fmt::Write as _;
 use std::net::IpAddr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -18,7 +19,7 @@ pub struct Citation {
     pub snippet: String,
 }
 
-/// Run deterministic tools for an intent. Returns (answer, tools_used).
+/// Run deterministic tools for an intent. Returns (answer, `tools_used`).
 pub async fn try_builtin_tools(client: &Client, intent: &str) -> Option<(String, Vec<String>)> {
     let intent = correct_typos(intent.trim());
     let intent = intent.trim();
@@ -41,7 +42,10 @@ pub async fn try_builtin_tools(client: &Client, intent: &str) -> Option<(String,
     }
 
     if looks_like_time(intent) {
-        return Some((format!("Current UTC time: {}", chrono_lite_now()), vec!["get_time".into()]));
+        return Some((
+            format!("Current UTC time: {}", chrono_lite_now()),
+            vec!["get_time".into()],
+        ));
     }
 
     if looks_like_search(intent) {
@@ -120,7 +124,7 @@ pub fn looks_like_search(intent: &str) -> bool {
         || intent.contains("了解一下")
 }
 
-/// "Who are you?" — answer as OpenLive, never search Wikipedia.
+/// "Who are you?" — answer as `OpenLive`, never search Wikipedia.
 pub fn looks_like_identity(intent: &str) -> bool {
     let raw = intent.trim();
     let t = raw.to_ascii_lowercase();
@@ -140,7 +144,8 @@ pub fn looks_like_identity(intent: &str) -> bool {
     ) || t.starts_with("who are you")
         || t.starts_with("what are you")
         || matches!(
-            raw.trim_end_matches(['?', '？', '!', '！', '.', '。']).trim(),
+            raw.trim_end_matches(['?', '？', '!', '！', '.', '。'])
+                .trim(),
             "你是谁"
                 | "您是谁"
                 | "你叫什么"
@@ -173,16 +178,50 @@ pub fn looks_like_chitchat(intent: &str) -> bool {
     let raw = intent.trim();
     matches!(
         t.as_str(),
-        "hi" | "hello" | "hey" | "yo" | "sup" | "thanks" | "thank you" | "ok" | "okay"
-            | "bye" | "goodbye" | "good morning" | "good night" | "how are you"
-            | "how's it going" | "hows it going" | "what's up" | "whats up"
-            | "i'm fine" | "im fine" | "cool" | "nice" | "great" | "lol" | "haha"
+        "hi" | "hello"
+            | "hey"
+            | "yo"
+            | "sup"
+            | "thanks"
+            | "thank you"
+            | "ok"
+            | "okay"
+            | "bye"
+            | "goodbye"
+            | "good morning"
+            | "good night"
+            | "how are you"
+            | "how's it going"
+            | "hows it going"
+            | "what's up"
+            | "whats up"
+            | "i'm fine"
+            | "im fine"
+            | "cool"
+            | "nice"
+            | "great"
+            | "lol"
+            | "haha"
     ) || t.starts_with("how are you")
         || t.starts_with("nice to meet")
         || matches!(
             raw,
-            "你好" | "您好" | "嗨" | "哈喽" | "谢谢" | "多谢" | "再见" | "拜拜" | "早上好"
-                | "晚安" | "你好啊" | "在吗" | "嗯" | "好的" | "好" | "行"
+            "你好"
+                | "您好"
+                | "嗨"
+                | "哈喽"
+                | "谢谢"
+                | "多谢"
+                | "再见"
+                | "拜拜"
+                | "早上好"
+                | "晚安"
+                | "你好啊"
+                | "在吗"
+                | "嗯"
+                | "好的"
+                | "好"
+                | "行"
         )
 }
 
@@ -213,7 +252,10 @@ pub fn looks_like_math(intent: &str) -> bool {
                 || t.contains(" times ")
                 || t.contains(" minus ")
                 || t.contains(" divided "))
-        || (intent.contains("加") || intent.contains("减") || intent.contains("乘") || intent.contains("除"))
+        || (intent.contains("加")
+            || intent.contains("减")
+            || intent.contains("乘")
+            || intent.contains("除"))
             && intent.chars().any(|c| c.is_ascii_digit())
         || (t.chars().any(|c| matches!(c, '+' | '*' | '/'))
             && t.chars().any(|c| c.is_ascii_digit()))
@@ -374,7 +416,10 @@ pub fn search_query_from(intent: &str) -> String {
         q = q.trim().to_owned();
         for p in prefixes {
             if let Some(rest) = q.strip_prefix(p) {
-                q = rest.trim().trim_start_matches([' ', '，', '、', ':']).to_owned();
+                q = rest
+                    .trim()
+                    .trim_start_matches([' ', '，', '、', ':'])
+                    .to_owned();
             }
         }
         if q == before {
@@ -462,7 +507,7 @@ pub fn search_query_from(intent: &str) -> String {
     q
 }
 
-/// True when model output is planning / CoT / meta instead of a real answer.
+/// True when model output is planning / `CoT` / meta instead of a real answer.
 /// Never show this kind of text to the human.
 /// Keep this STRICT — do not flag short real answers like "42" or "Paris".
 pub fn is_junk_spoken(text: &str) -> bool {
@@ -538,7 +583,8 @@ pub fn is_junk_spoken(text: &str) -> bool {
 pub fn public_tool_answer(intent: &str, raw: &str) -> String {
     if raw.starts_with("search error:") || raw.contains("no search results") {
         if has_cjk(intent) {
-            return "没查到可靠结果。可以试着说更短的名字，比如 ChatGPT、苹果公司 或 法国首都。".into();
+            return "没查到可靠结果。可以试着说更短的名字，比如 ChatGPT、苹果公司 或 法国首都。"
+                .into();
         }
         return "I couldn't find solid results. Try a short name like ChatGPT, Apple Inc., or capital of France.".into();
     }
@@ -612,7 +658,11 @@ pub fn strip_thinking_for_user(text: &str) -> String {
                 || l.starts_with("internal:"))
         })
         .collect();
-    let mut out = kept.join(" ").split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut out = kept
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     // If still starts with meta scaffolding, cut after final answer markers.
     let lower = out.to_ascii_lowercase();
     for marker in ["final answer:", "answer:", "response:"] {
@@ -776,8 +826,14 @@ fn find_population_figure(text: &str) -> Option<String> {
         let end = (start + 100).min(normalized.len());
         let window = &normalized[start..end];
         let wlower = window.to_ascii_lowercase();
-        for marker in [" of almost ", " of over ", " of about ", " of nearly ", " of around ", " of "]
-        {
+        for marker in [
+            " of almost ",
+            " of over ",
+            " of about ",
+            " of nearly ",
+            " of around ",
+            " of ",
+        ] {
             if let Some(i) = wlower.find(marker) {
                 let after = window[i + marker.len()..].trim_start();
                 // Number (with . or ,) then optional million/billion.
@@ -908,7 +964,8 @@ fn title_rank(title: &str, cleaned: &str) -> i32 {
         if tl.contains("artificial intelligence") || tl.contains("multi-agent") {
             score += 60;
         }
-        if tl.contains("secret agent") || tl.contains("sports agent") || tl.contains("real estate") {
+        if tl.contains("secret agent") || tl.contains("sports agent") || tl.contains("real estate")
+        {
             score -= 80;
         }
     }
@@ -946,7 +1003,8 @@ pub fn extract_math_expr(intent: &str) -> Option<String> {
         }
     }
     let e: String = expr.chars().filter(|c| !c.is_whitespace()).collect();
-    if e.chars().any(|c| c.is_ascii_digit()) && e.chars().any(|c| matches!(c, '+' | '-' | '*' | '/'))
+    if e.chars().any(|c| c.is_ascii_digit())
+        && e.chars().any(|c| matches!(c, '+' | '-' | '*' | '/'))
     {
         Some(e)
     } else {
@@ -954,7 +1012,7 @@ pub fn extract_math_expr(intent: &str) -> Option<String> {
     }
 }
 
-/// Map speech/common mishears to Wikipedia titles (e.g. "check gpt" → ChatGPT).
+/// Map speech/common mishears to Wikipedia titles (e.g. "check gpt" → `ChatGPT`).
 pub fn expand_search_aliases(cleaned: &str) -> Vec<String> {
     let c = cleaned
         .to_ascii_lowercase()
@@ -996,7 +1054,11 @@ pub fn expand_search_aliases(cleaned: &str) -> Vec<String> {
             continue;
         }
         // Phrase boundary contains: "what about check gpt please"
-        if from.len() >= 5 && (c.contains(&format!(" {from} ")) || c.starts_with(&format!("{from} ")) || c.ends_with(&format!(" {from}"))) {
+        if from.len() >= 5
+            && (c.contains(&format!(" {from} "))
+                || c.starts_with(&format!("{from} "))
+                || c.ends_with(&format!(" {from}")))
+        {
             out.push((*to).to_owned());
         }
     }
@@ -1025,7 +1087,7 @@ pub async fn web_search_with_sources(
 ) -> Result<(String, Vec<Citation>), String> {
     let mut parts = Vec::new();
     let mut sources: Vec<Citation> = Vec::new();
-    let ua = "OpenLive/26.7.15 (https://github.com/openlive; agent-search)";
+    let ua = "OpenLive/26.7.16 (https://github.com/openlive; agent-search)";
     let cleaned = search_query_from(query);
     if cleaned.is_empty() {
         return Err("empty search query".into());
@@ -1034,9 +1096,15 @@ pub async fn web_search_with_sources(
     // Chinese-only queries → zh wiki; mixed "什么是 ChatGPT" with English topic → en wiki first.
     let wiki_host = if has_cjk(&cleaned) && !cleaned.chars().any(|c| c.is_ascii_alphabetic()) {
         "zh.wikipedia.org"
-    } else if has_cjk(query) && aliases.iter().any(|a| a.contains("ChatGPT") || a.contains("GPT")) {
+    } else if has_cjk(query)
+        && aliases
+            .iter()
+            .any(|a| a.contains("ChatGPT") || a.contains("GPT"))
+    {
         "en.wikipedia.org"
-    } else if has_cjk(&cleaned) || (has_cjk(query) && !cleaned.chars().any(|c| c.is_ascii_alphabetic())) {
+    } else if has_cjk(&cleaned)
+        || (has_cjk(query) && !cleaned.chars().any(|c| c.is_ascii_alphabetic()))
+    {
         "zh.wikipedia.org"
     } else {
         "en.wikipedia.org"
@@ -1148,17 +1216,14 @@ pub async fn web_search_with_sources(
         if seen.insert(s.to_ascii_lowercase()) {
             titles.push(s.clone());
         }
-        match wiki_opensearch(client, ua, wiki_host, s).await {
-            Ok(found) => {
-                for name in found {
-                    if !name.is_empty() && seen.insert(name.to_ascii_lowercase()) {
-                        titles.push(name);
-                    }
+        if let Ok(found) = wiki_opensearch(client, ua, wiki_host, s).await {
+            for name in found {
+                if !name.is_empty() && seen.insert(name.to_ascii_lowercase()) {
+                    titles.push(name);
                 }
             }
-            Err(_) => {
-                // Rate-limit / transient — still try direct summaries below.
-            }
+        } else {
+            // Rate-limit / transient — still try direct summaries below.
         }
         if titles.len() >= 8 {
             break;
@@ -1294,7 +1359,7 @@ pub async fn web_search_with_sources(
 /// Loose relevance: query tokens should appear in title or extract (skip stopwords).
 fn title_relevant_enough(cleaned: &str, title: &str, extract: &str) -> bool {
     let stop = ["the", "a", "an", "of", "for", "and", "is", "what", "who"];
-    let hay = format!("{} {}", title, extract).to_ascii_lowercase();
+    let hay = format!("{title} {extract}").to_ascii_lowercase();
     let tokens: Vec<&str> = cleaned
         .split_whitespace()
         .filter(|t| t.len() > 2 && !stop.contains(t))
@@ -1383,7 +1448,7 @@ async fn web_search_en_only(
     client: &Client,
     cleaned: &str,
 ) -> Result<(String, Vec<Citation>), String> {
-    let ua = "OpenLive/26.7.15 (https://github.com/openlive; agent-search)";
+    let ua = "OpenLive/26.7.16 (https://github.com/openlive; agent-search)";
     let host = "en.wikipedia.org";
     let mut titles = vec![title_case_words(cleaned), cleaned.to_owned()];
     if let Ok(found) = wiki_opensearch(client, ua, host, cleaned).await {
@@ -1449,7 +1514,7 @@ async fn wiki_opensearch(
     Err("opensearch failed".into())
 }
 
-/// Returns (title, extract, page_url).
+/// Returns (title, extract, `page_url`).
 async fn wiki_summary(
     client: &Client,
     ua: &str,
@@ -1464,9 +1529,10 @@ async fn wiki_summary(
             _ => {
                 let mut buf = [0u8; 4];
                 let enc = c.encode_utf8(&mut buf);
-                enc.bytes()
-                    .map(|b| format!("%{b:02X}"))
-                    .collect::<String>()
+                enc.bytes().fold(String::new(), |mut acc, b| {
+                    let _ = write!(acc, "%{b:02X}");
+                    acc
+                })
             }
         })
         .collect();
@@ -1494,7 +1560,11 @@ async fn wiki_summary(
         if dtype == "disambiguation" {
             return None;
         }
-        let extract = v.get("extract").and_then(Value::as_str).unwrap_or("").to_owned();
+        let extract = v
+            .get("extract")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned();
         let label = v
             .get("title")
             .and_then(Value::as_str)
@@ -1506,8 +1576,7 @@ async fn wiki_summary(
         let page_url = v
             .pointer("/content_urls/desktop/page")
             .and_then(Value::as_str)
-            .map(str::to_owned)
-            .unwrap_or_else(|| format!("https://{host}/wiki/{path_enc}"));
+            .map_or_else(|| format!("https://{host}/wiki/{path_enc}"), str::to_owned);
         return Some((label, extract, page_url));
     }
     None
@@ -1597,10 +1666,7 @@ pub async fn browse_url_raw(
     browse_url_with_engine(client, url, BrowseEngine::Auto).await
 }
 
-async fn browse_url_http(
-    client: &Client,
-    url: &str,
-) -> Result<(String, Citation, String), String> {
+async fn browse_url_http(client: &Client, url: &str) -> Result<(String, Citation, String), String> {
     let url = url.trim();
     if url.is_empty() {
         return Err("url is required".into());
@@ -1621,11 +1687,14 @@ async fn browse_url_http(
     if is_blocked_browse_host(&host) {
         return Err("host is blocked (private/local networks not allowed)".into());
     }
-    let ua = "OpenLive/26.7.15 (sandbox-browser; +https://github.com/openlive)";
+    let ua = "OpenLive/26.7.16 (sandbox-browser; +https://github.com/openlive)";
     let resp = client
         .get(parsed.clone())
         .header("User-Agent", ua)
-        .header("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5")
+        .header(
+            "Accept",
+            "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
+        )
         .timeout(std::time::Duration::from_secs(12))
         .send()
         .await
@@ -1641,10 +1710,7 @@ async fn browse_url_http(
             return Err("redirected to blocked host".into());
         }
     }
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| format!("read body: {e}"))?;
+    let bytes = resp.bytes().await.map_err(|e| format!("read body: {e}"))?;
     // Truncate oversized HTML instead of failing (Wikipedia pages are often large).
     const MAX_BYTES: usize = 512 * 1024;
     let slice = if bytes.len() > MAX_BYTES {
@@ -1686,15 +1752,16 @@ pub async fn browse_site(
     let host = base.host_str().unwrap_or("").to_ascii_lowercase();
     let links = extract_same_host_links(&html, &base, &host, max_links + 4);
     for (i, link) in links.into_iter().take(max_links).enumerate() {
-        match browse_url(client, &link).await {
-            Ok((text, cite)) => {
-                if sources.iter().any(|s| s.url == cite.url) {
-                    continue;
-                }
-                sources.push(cite);
-                parts.push(format!("[page {}] {}", i + 2, text.chars().take(900).collect::<String>()));
+        if let Ok((text, cite)) = browse_url(client, &link).await {
+            if sources.iter().any(|s| s.url == cite.url) {
+                continue;
             }
-            Err(_) => continue,
+            sources.push(cite);
+            parts.push(format!(
+                "[page {}] {}",
+                i + 2,
+                text.chars().take(900).collect::<String>()
+            ));
         }
     }
     Ok((parts.join("\n\n---\n\n"), sources))
@@ -1779,7 +1846,8 @@ async fn try_wikipedia_summary_browse(
     if title.is_empty() {
         return None;
     }
-    let (label, extract, page_url) = wiki_summary(client, "OpenLive/26.7.15", &host, &title).await?;
+    let (label, extract, page_url) =
+        wiki_summary(client, "OpenLive/26.7.16", &host, &title).await?;
     let text = format!("{label}\n\n{extract}");
     let cite = Citation {
         title: label,
@@ -1798,7 +1866,10 @@ pub fn save_lab_note(name: &str, content: &str) -> Result<String, String> {
     if name.contains("..") {
         return Err("invalid note name".into());
     }
-    let safe = if name.ends_with(".md") || name.ends_with(".txt") {
+    let safe = if std::path::Path::new(name)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("md") || ext.eq_ignore_ascii_case("txt"))
+    {
         name.to_owned()
     } else {
         format!("{name}.md")
@@ -1812,10 +1883,23 @@ pub fn is_blocked_browse_host_public(host: &str) -> bool {
     is_blocked_browse_host(host)
 }
 
+fn is_unique_local_v6(addr: &std::net::Ipv6Addr) -> bool {
+    // fc00::/7 (RFC 4193 unique local addresses)
+    (addr.octets()[0] & 0xfe) == 0xfc
+}
+
+fn is_unicast_link_local_v6(addr: &std::net::Ipv6Addr) -> bool {
+    // fe80::/10 (RFC 4291 link-local unicast addresses)
+    let octets = addr.octets();
+    octets[0] == 0xfe && (octets[1] & 0xc0) == 0x80
+}
+
 fn is_blocked_browse_host(host: &str) -> bool {
     if host == "localhost"
         || host.ends_with(".localhost")
-        || host.ends_with(".local")
+        || host
+            .rsplit_once('.')
+            .is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("local"))
         || host.ends_with(".internal")
         || host == "0.0.0.0"
         || host == "[::1]"
@@ -1833,7 +1917,9 @@ fn is_blocked_browse_host(host: &str) -> bool {
                     || v4.is_broadcast()
                     || v4.octets()[0] == 169 && v4.octets()[1] == 254
             }
-            IpAddr::V6(v6) => v6.is_loopback() || v6.is_unique_local() || v6.is_unicast_link_local(),
+            IpAddr::V6(v6) => {
+                v6.is_loopback() || is_unique_local_v6(&v6) || is_unicast_link_local_v6(&v6)
+            }
         };
     }
     false
@@ -2011,7 +2097,9 @@ fn urlencoding_lite(s: &str) -> String {
                 out.push(b as char);
             }
             b' ' => out.push('+'),
-            _ => out.push_str(&format!("%{b:02X}")),
+            _ => {
+                let _ = write!(out, "%{b:02X}");
+            }
         }
     }
     out
@@ -2037,20 +2125,11 @@ mod tests {
             "apple"
         );
         assert_eq!(search_query_from("search something about Apple"), "apple");
-        assert_eq!(
-            search_query_from("please just look it up — Apple"),
-            "apple"
-        );
+        assert_eq!(search_query_from("please just look it up — Apple"), "apple");
         assert_eq!(search_query_from("look it up Apple"), "apple");
-        assert_eq!(
-            search_query_from("find me info on Microsoft"),
-            "microsoft"
-        );
+        assert_eq!(search_query_from("find me info on Microsoft"), "microsoft");
         assert_eq!(search_query_from("look for OpenAI"), "openai");
-        assert_eq!(
-            search_query_from("how many planets are there"),
-            "planets"
-        );
+        assert_eq!(search_query_from("how many planets are there"), "planets");
         assert_eq!(search_query_from("where is Tokyo"), "tokyo");
         assert_eq!(search_query_from("what is Bitcoin"), "bitcoin");
         assert!(looks_like_search("find me info on Microsoft"));
@@ -2068,11 +2147,9 @@ mod tests {
         );
         assert!(expand_search_aliases("check gpt").contains(&"ChatGPT".to_string()));
         assert_eq!(expand_search_aliases("check gpt").len(), 1);
-        assert!(
-            search_query_from("search what is agent")
-                .to_ascii_lowercase()
-                .contains("agent")
-        );
+        assert!(search_query_from("search what is agent")
+            .to_ascii_lowercase()
+            .contains("agent"));
         assert!(looks_like_identity("你是谁"));
         assert!(looks_like_identity("who are you"));
         assert!(!looks_like_search("你是谁"));
@@ -2093,7 +2170,8 @@ mod tests {
             Some("Paris is the capital.".into())
         );
         assert!(public_llm_answer("Got it, let's respond warmly").is_none());
-        let corpus = "France: Its capital, largest city and main cultural and economic centre is Paris.";
+        let corpus =
+            "France: Its capital, largest city and main cultural and economic centre is Paris.";
         assert_eq!(
             direct_capital_answer("what is the capital of France", corpus).as_deref(),
             Some("The capital of France is Paris.")
@@ -2109,7 +2187,9 @@ mod tests {
             direct_population_answer("what is the population of Japan", jp).as_deref(),
             Some("Japan has a population of about 123 million.")
         );
-        assert!(title_rank("Population of Japan", "population of japan")
-            > title_rank("Population of Jamaica", "population of japan"));
+        assert!(
+            title_rank("Population of Japan", "population of japan")
+                > title_rank("Population of Jamaica", "population of japan")
+        );
     }
 }

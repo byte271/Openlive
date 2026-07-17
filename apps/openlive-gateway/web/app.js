@@ -1,5 +1,5 @@
 /**
- * Openlive 26.7.15 — app.js
+ * Openlive 26.7.16 — app.js
  *
  * Orchestrates the voice surface: WebSocket lifecycle, audio session,
  * transcript, first-run setup, background agent bridge, settings, and
@@ -204,6 +204,8 @@ let languagePreference = localStorage.getItem("openlive:v2:language") ?? "auto";
 let pc = null;
 let dc = null;
 let webrtcMode = false;
+/** Guard to prevent multiple simultaneous fallback-to-WebSocket triggers. */
+let fallbackInProgress = false;
 let activeProvider = null;
 /** @type {object|null} */
 let gatewayMeta = null;
@@ -220,6 +222,26 @@ let lastHandledUtterance = "";
 let lastHandledUtteranceAt = 0;
 /** @type {Array<{id:string,name:string,base_url:string,default_model:string,models:string[],free_tier:boolean,description:string,docs_url:string}>} */
 let llmProviders = [];
+
+/**
+ * Built-in provider details — used when the gateway hasn't started yet so
+ * applyProviderPreset can still set base_url / model / description.
+ * Mirrors crates/openlive-provider/src/llm_catalog.rs.
+ */
+const BUILTIN_PROVIDER_DETAILS = {
+  nvidia: { id: "nvidia", name: "NVIDIA NIM", base_url: "https://integrate.api.nvidia.com/v1", default_model: "meta/llama-3.1-8b-instruct", models: ["meta/llama-3.1-8b-instruct", "meta/llama-3.3-70b-instruct", "google/gemma-2-9b-it", "mistralai/mistral-7b-instruct-v0.3", "microsoft/phi-3-mini-128k-instruct"], free_tier: true, description: "Free API key via build.nvidia.com — OpenAI-compatible chat." },
+  groq: { id: "groq", name: "Groq", base_url: "https://api.groq.com/openai/v1", default_model: "llama-3.3-70b-versatile", models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "gemma2-9b-it"], free_tier: true, description: "Fast open models (Llama, Gemma) via GroqCloud." },
+  openrouter: { id: "openrouter", name: "OpenRouter", base_url: "https://openrouter.ai/api/v1", default_model: "meta-llama/llama-3.1-8b-instruct:free", models: ["meta-llama/llama-3.1-8b-instruct:free", "google/gemma-2-9b-it:free", "mistralai/mistral-7b-instruct:free"], free_tier: true, description: "Many open models behind one OpenAI-compatible API." },
+  together: { id: "together", name: "Together AI", base_url: "https://api.together.xyz/v1", default_model: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo", models: ["meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo", "mistralai/Mixtral-8x7B-Instruct-v0.1"], free_tier: false, description: "Open-weight models hosted by Together." },
+  deepseek: { id: "deepseek", name: "DeepSeek", base_url: "https://api.deepseek.com/v1", default_model: "deepseek-chat", models: ["deepseek-chat", "deepseek-reasoner"], free_tier: false, description: "DeepSeek chat models (OpenAI-compatible)." },
+  fireworks: { id: "fireworks", name: "Fireworks", base_url: "https://api.fireworks.ai/inference/v1", default_model: "accounts/fireworks/models/llama-v3p1-8b-instruct", models: ["accounts/fireworks/models/llama-v3p1-8b-instruct", "accounts/fireworks/models/mixtral-8x7b-instruct"], free_tier: false, description: "Fast inference for open models." },
+  mistral: { id: "mistral", name: "Mistral", base_url: "https://api.mistral.ai/v1", default_model: "mistral-small-latest", models: ["mistral-small-latest", "mistral-large-latest", "open-mistral-nemo"], free_tier: false, description: "Mistral large / small via official API." },
+  ollama: { id: "ollama", name: "Ollama (local)", base_url: "http://127.0.0.1:11434/v1", default_model: "llama3.2", models: ["llama3.2", "mistral", "qwen2.5", "gemma2"], free_tier: true, description: "Fully local open models via Ollama OpenAI shim." },
+  openai: { id: "openai", name: "OpenAI", base_url: "https://api.openai.com/v1", default_model: "gpt-4o-mini", models: ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"], free_tier: false, description: "OpenAI chat completions (paid)." },
+  cerebras: { id: "cerebras", name: "Cerebras", base_url: "https://api.cerebras.ai/v1", default_model: "llama3.1-8b", models: ["llama3.1-8b", "llama-3.3-70b"], free_tier: true, description: "Very fast Llama inference." },
+  sambanova: { id: "sambanova", name: "SambaNova", base_url: "https://api.sambanova.ai/v1", default_model: "Meta-Llama-3.1-8B-Instruct", models: ["Meta-Llama-3.1-8B-Instruct", "Meta-Llama-3.3-70B-Instruct"], free_tier: true, description: "SambaNova Cloud open models." },
+  custom: { id: "custom", name: "Custom", base_url: "http://127.0.0.1:8000/v1", default_model: "default", models: [], free_tier: true, description: "Any OpenAI-compatible base URL. Enter base URL, then pick or type a model id." },
+};
 
 const visualizer = new VoiceVisualizer(controls.voiceOrb);
 visualizer.setMotionScale(settings.motionScale);
@@ -342,10 +364,34 @@ const audio = new AudioSession({
    Wire up DOM listeners
    --------------------------------------------------------------------------- */
 
+controls.primary?.addEventListener("pointerdown", (event) => {
+  if (!conversationActive || settings.entryMode !== "ptt") return;
+  if (event.button !== 0) return;
+  event.preventDefault();
+  unlockUiAudio();
+  playClick("soft");
+  handlePttStart();
+});
+controls.primary?.addEventListener("pointerup", () => {
+  if (settings.entryMode === "ptt") handlePttEnd();
+});
+controls.primary?.addEventListener("pointerleave", () => {
+  if (settings.entryMode === "ptt") handlePttEnd();
+});
+controls.primary?.addEventListener("pointercancel", () => {
+  if (settings.entryMode === "ptt") handlePttEnd();
+});
 controls.primary?.addEventListener("click", () => {
   unlockUiAudio();
   playClick(conversationActive ? "soft" : "confirm");
-  handlePrimaryAction();
+  if (conversationActive && settings.entryMode === "ptt") return;
+  void handlePrimaryAction();
+});
+controls.orbShell?.addEventListener("click", () => {
+  if (conversationActive || controls.primary?.disabled) return;
+  unlockUiAudio();
+  playClick("confirm");
+  void handlePrimaryAction();
 });
 controls.end?.addEventListener("click", () => {
   playClick("cancel");
@@ -366,6 +412,13 @@ controls.settings?.addEventListener("click", () => {
     fillVoiceSelect(voices.length ? voices : OFFLINE_VOICES);
   }
   toggleSettings();
+  // Scroll settings body to top on open so the user always sees the first section.
+  const settingsBody = document.querySelector(".settings-body");
+  if (settingsBody) {
+    requestAnimationFrame(() => {
+      settingsBody.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
   // Refresh runtime panel every time Settings opens.
   void refreshRuntimeStatus();
 });
@@ -446,6 +499,20 @@ if (controls.motionRange) {
 controls.latencyToggle?.addEventListener("change", (event) => {
   settings = saveSettings({ showLatency: event.target.checked });
   refreshLatencyPill();
+  playClick("soft");
+});
+controls.fullscreenToggle?.addEventListener("change", (event) => {
+  settings = saveSettings({ fullscreen: event.target.checked });
+  applyFullscreen(settings.fullscreen);
+  playClick("soft");
+});
+const exitFullscreenBtn = document.getElementById("exitFullscreen");
+exitFullscreenBtn?.addEventListener("click", () => {
+  settings = saveSettings({ fullscreen: false });
+  applyFullscreen(false);
+  if (controls.fullscreenToggle) {
+    controls.fullscreenToggle.checked = false;
+  }
   playClick("soft");
 });
 controls.debug?.addEventListener("click", () => {
@@ -543,27 +610,17 @@ window.addEventListener("beforeunload", () => {
 installShortcuts({
   isConversationActive: () => conversationActive,
   isPTTMode: () => settings.entryMode === "ptt",
+  isBlocked: () => isInteractionBlocked(),
+  onStartConversation: () => {
+    unlockUiAudio();
+    playClick("confirm");
+    void handlePrimaryAction();
+  },
   onPTTStart: () => {
-    if (!conversationActive || pttHeld) return;
-    pttHeld = true;
-    if (!microphoneActive) {
-      audio.startMicrophone().then(() => {
-        microphoneActive = true;
-        setConversationActive(true, true, true);
-        transition(VoiceMode.LISTENING);
-      }).catch((error) => showNotice(microphoneErrorMessage(error)));
-    } else {
-      transition(VoiceMode.LISTENING);
-    }
+    handlePttStart();
   },
   onPTTEnd: () => {
-    if (!pttHeld) return;
-    pttHeld = false;
-    // In PTT mode, releasing commits the turn: keep mic hot for a moment
-    // so trailing audio is captured, then yield to thinking.
-    if (microphoneActive) {
-      transition(VoiceMode.THINKING);
-    }
+    handlePttEnd();
   },
   toggleMute: handleMuteToggle,
   toggleTranscript: () => toggleTranscript(),
@@ -577,6 +634,13 @@ installShortcuts({
     const next = settings.layout === "focused" ? "inline" : "focused";
     settings = saveSettings({ layout: next });
     setLayout(next);
+  },
+  toggleFullscreen: () => {
+    settings = saveSettings({ fullscreen: !settings.fullscreen });
+    applyFullscreen(settings.fullscreen);
+    if (controls.fullscreenToggle) {
+      controls.fullscreenToggle.checked = settings.fullscreen;
+    }
   },
   toggleCamera: toggleCamera,
   toggleScreenShare: toggleScreenShare,
@@ -608,10 +672,12 @@ if (setup.naturalBackchannels && settings.backchannels === "off") {
 }
 
 applyTheme(settings.theme);
+applyFullscreen(settings.fullscreen);
 applyEntryMode();
 applySettingsForm();
 applySetupToSettingsForm();
 applySessionCapFromSettings();
+refreshFullscreenToggle();
 visualizer.setMode(VoiceMode.IDLE);
 resetExperience();
 renderVoiceList(voices, selectedVoice.id, onVoiceSelected);
@@ -626,7 +692,10 @@ refreshInstructionsBadge();
 initializeTaskRail();
 
 // Load LLM provider catalog + sync gateway config (non-blocking).
-void bootstrapLlmUi();
+void bootstrapLlmUi().then(() => {
+  // Dismiss the boot splash once the provider catalog is loaded.
+  dismissBootSplash();
+});
 // Paint Settings → Runtime as soon as the page loads (don't wait for Start).
 void refreshRuntimeStatus();
 
@@ -640,29 +709,57 @@ if (!isSetupComplete()) {
   void pushLlmConfig(setup).catch(() => {});
 }
 
+// Failsafe: dismiss splash after 3s even if bootstrapLlmUi hangs.
+setTimeout(dismissBootSplash, 3000);
+
+// Install ripple click feedback on all interactive elements.
+installRippleFeedback();
+
 /* ---------------------------------------------------------------------------
    Primary action / conversation lifecycle
    --------------------------------------------------------------------------- */
 
+function isInteractionBlocked() {
+  return document.body.classList.contains("setup-open");
+}
+
+function showSetupRequiredNotice() {
+  showNotice("Finish setup first — tap Continue at the bottom of the wizard.");
+}
+
+function handlePttStart() {
+  if (!conversationActive || pttHeld) return;
+  pttHeld = true;
+  if (!microphoneActive) {
+    audio.startMicrophone().then(() => {
+      microphoneActive = true;
+      setConversationActive(true, true, true);
+      transition(VoiceMode.LISTENING);
+    }).catch((error) => showNotice(microphoneErrorMessage(error)));
+  } else {
+    transition(VoiceMode.LISTENING);
+  }
+}
+
+function handlePttEnd() {
+  if (!pttHeld) return;
+  pttHeld = false;
+  if (microphoneActive) {
+    transition(VoiceMode.THINKING);
+  }
+}
+
 async function handlePrimaryAction() {
+  if (isInteractionBlocked()) {
+    showSetupRequiredNotice();
+    return;
+  }
   if (!conversationActive) {
     await beginConversation();
     return;
   }
   if (settings.entryMode === "ptt") {
-    // In PTT mode the primary button mirrors the spacebar.
-    if (pttHeld) return;
-    pttHeld = true;
-    if (!microphoneActive) {
-      try {
-        await audio.startMicrophone();
-        microphoneActive = true;
-        setConversationActive(true, true, true);
-        transition(VoiceMode.LISTENING);
-      } catch (error) {
-        showNotice(microphoneErrorMessage(error));
-      }
-    }
+    handlePttStart();
     return;
   }
   handleMuteToggle();
@@ -693,6 +790,9 @@ async function beginConversation() {
   mediaTimeUs = 0;
   assistantText = "";
   transcriptVisible = false;
+  receivedMediaForGeneration = false;
+  fallbackInProgress = false;
+  silentWebRtcReconnect._attempts = 0;
   clearTimeout(transcriptTimer);
   transcript.clear();
   toolCalls.clear();
@@ -750,8 +850,10 @@ async function beginConversation() {
     }
   } catch (error) {
     userEnded = true;
+    fallbackInProgress = false;
     closeWebRtcConnection();
     socket?.close();
+    socket = undefined;
     audio.stopMicrophone();
     microphoneActive = false;
     conversationActive = false;
@@ -770,6 +872,8 @@ function endConversation() {
   conversationActive = false;
   microphoneActive = false;
   pttHeld = false;
+  fallbackInProgress = false;
+  silentWebRtcReconnect._attempts = 0;
   clearTimeout(reconnectTimer);
   clearTimeout(transcriptTimer);
   stopBrowserSpeech();
@@ -846,9 +950,12 @@ async function refreshRuntimeStatus() {
   } else if (el) {
     el.innerHTML = `<p class="sheet-intro settings-hint" style="color:var(--bad)">Gateway unreachable. Is openlive-gateway running on this port?</p>
       <button type="button" class="settings-btn" id="retryRuntimeStatus">Retry</button>`;
-    document.getElementById("retryRuntimeStatus")?.addEventListener("click", () => {
-      void refreshRuntimeStatus();
-    });
+    const retry = document.getElementById("retryRuntimeStatus");
+    if (retry) {
+      retry.onclick = () => {
+        void refreshRuntimeStatus();
+      };
+    }
   }
 }
 
@@ -972,10 +1079,14 @@ async function openGatewayWebRtcConnection() {
   pc = new RTCPeerConnection({ iceServers });
 
   pc.onconnectionstatechange = () => {
-    if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-      addTimeline("webrtc", "Gateway WebRTC disconnected; falling back to WebSocket PCM...");
-      closeWebRtcConnection();
-      openConnection().catch(() => {});
+    // Use optional chaining — pc may be null by the time this async event
+    // fires (closeWebRtcConnection / fallbackToWebSocket set pc = null
+    // synchronously after calling pc.close()).
+    const state = pc?.connectionState;
+    if (state === "failed" || state === "disconnected") {
+      addTimeline("webrtc", `Gateway WebRTC ${state}; falling back to WebSocket PCM...`);
+      // Use coordinated fallback — guarded against re-entry.
+      fallbackToWebSocket(`gateway WebRTC ${state}`).catch(() => {});
     }
   };
 
@@ -1007,6 +1118,9 @@ async function openGatewayWebRtcConnection() {
           : event.data?.buffer || event.data;
       const packet = decodeOutputAudio(buffer);
       if (packet) {
+        // Track that we received streaming PCM so output_text_final
+        // doesn't double-play TTS on top of it.
+        receivedMediaForGeneration = true;
         audio.enqueue(packet).catch(() => {});
       }
     } catch {
@@ -1014,10 +1128,6 @@ async function openGatewayWebRtcConnection() {
     }
   };
 
-  // Forward capture frames onto the media data channel as MediaPackets.
-  const previousOnFrame = audio.callbacks?.onInputFrame;
-  audio.callbacks = audio.callbacks || {};
-  const originalStart = audio.startMicrophone.bind(audio);
   // Hook existing onInputFrame path via app's sendAudioFrame when webrtcMode.
   window.__openliveMediaDc = mediaDc;
 
@@ -1045,10 +1155,9 @@ async function openGatewayWebRtcConnection() {
   );
   sessionId = body.session_id || sessionId;
   webrtcMode = true;
+  receivedMediaForGeneration = false;
   addTimeline("webrtc", "Gateway-native WebRTC established (DTLS data channels)");
   setTransportLabel("WebRTC · gateway");
-  void previousOnFrame;
-  void originalStart;
 }
 
 async function openWebRtcConnection(model, voice) {
@@ -1070,8 +1179,12 @@ async function openWebRtcConnection(model, voice) {
   pc = new RTCPeerConnection({ iceServers });
 
   pc.onconnectionstatechange = () => {
-    if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-      addTimeline("webrtc", "WebRTC transport disconnected, attempting silent renegotiation...");
+    // Use optional chaining — pc may be null by the time this async event
+    // fires (silentWebRtcReconnect / fallbackToWebSocket set pc = null
+    // synchronously after calling pc.close()).
+    const state = pc?.connectionState;
+    if (state === "failed" || state === "disconnected") {
+      addTimeline("webrtc", `WebRTC transport ${state}, attempting silent renegotiation...`);
       silentWebRtcReconnect();
     }
   };
@@ -1133,7 +1246,7 @@ async function openWebRtcConnection(model, voice) {
   );
   addTimeline("webrtc", "Provider-edge WebRTC connection established");
   setTransportLabel("WebRTC · Opus");
-  void voice;
+  receivedMediaForGeneration = false;
 }
 
 function closeWebRtcConnection() {
@@ -1143,6 +1256,7 @@ function closeWebRtcConnection() {
   dc = null;
   pc = null;
   webrtcMode = false;
+  window.__openliveMediaDc = null;
   addTimeline("webrtc", "WebRTC connection closed");
   setTransportLabel("WebSocket PCM");
 }
@@ -1177,16 +1291,124 @@ function shortProviderName(id) {
   return parts[parts.length - 1] || id;
 }
 
-async function silentWebRtcReconnect() {
+/**
+ * Coordinated fallback from WebRTC to WebSocket PCM transport.
+ *
+ * This replaces the ad-hoc closeWebRtcConnection()+openConnection() pattern
+ * that was prone to races. It is guarded by `fallbackInProgress` to prevent
+ * multiple simultaneous fallbacks (e.g. when onconnectionstatechange fires
+ * both "disconnected" and "failed" in quick succession).
+ *
+ * Steps:
+ *   1. Mark fallback in progress (guard against re-entry).
+ *   2. Tear down WebRTC resources cleanly.
+ *   3. Reset audio state so playback works on the new path.
+ *   4. Open a fresh WebSocket connection.
+ *   5. If WebSocket succeeds, reconfigure the session.
+ *   6. If WebSocket also fails, let the caller / beginConversation catch block handle it.
+ *
+ * @param {string} [reason] - Human-readable reason for the fallback.
+ * @returns {Promise<void>}
+ */
+async function fallbackToWebSocket(reason = "WebRTC unavailable") {
+  // Guard against re-entry — multiple state-change events can fire rapidly.
+  if (fallbackInProgress) {
+    addTimeline("webrtc", `Fallback already in progress — skipping (${reason})`);
+    return;
+  }
+  if (!conversationActive || userEnded) return;
+
+  fallbackInProgress = true;
+  addTimeline("webrtc", `Falling back to WebSocket PCM: ${reason}`);
+
   try {
-    if (!conversationActive || userEnded) return;
+    // 1. Tear down WebRTC resources.
     audio.disconnectWebRtc();
     dc?.close();
     pc?.close();
+    dc = null;
+    pc = null;
+    window.__openliveMediaDc = null;
+    webrtcMode = false;
+
+    // 2. Reset audio + TTS state so the new transport starts clean.
+    receivedMediaForGeneration = false;
+    audio.reset();
+    assistantText = "";
+    setAssistantText("");
+
+    // 3. Open a fresh WebSocket connection — unless one is already open.
+    //    In the provider-edge path, openConnection() was called before
+    //    openWebRtcConnection(), so the old WebSocket may still be alive.
+    if (socket?.readyState === WebSocket.OPEN && sessionId) {
+      addTimeline("webrtc", "Reusing existing WebSocket connection for fallback");
+    } else {
+      // We need a new sessionId since the WebRTC session is gone.
+      sessionId = undefined;
+      setConnectionState("connecting");
+      await openConnection();
+    }
+
+    // 4. Success — update transport label and let the conversation continue.
+    setTransportLabel("WebSocket PCM");
+    addTimeline("webrtc", "WebSocket PCM fallback established");
+    // configureSession() is called by the session_created handler in
+    // handleControl, so we don't need to call it here.
+  } catch (error) {
+    addTimeline("webrtc", `WebSocket fallback also failed: ${error.message}`);
+    // If even WebSocket fails, let scheduleReconnect handle retries.
+    if (!userEnded && conversationActive) {
+      scheduleReconnect();
+    }
+    throw error;
+  } finally {
+    fallbackInProgress = false;
+  }
+}
+
+async function silentWebRtcReconnect() {
+  if (!conversationActive || userEnded) return;
+
+  // Limit WebRTC re-negotiation attempts to avoid infinite loops when the
+  // provider edge is persistently down. After exhausting retries, fall back
+  // to WebSocket PCM permanently for the rest of the session.
+  silentWebRtcReconnect._attempts = (silentWebRtcReconnect._attempts || 0) + 1;
+  if (silentWebRtcReconnect._attempts > 2) {
+    addTimeline("webrtc", `WebRTC reconnect attempts exhausted (${silentWebRtcReconnect._attempts - 1}), falling back to WebSocket PCM`);
+    silentWebRtcReconnect._attempts = 0;
+    try {
+      await fallbackToWebSocket("provider-edge WebRTC retry limit reached");
+    } catch (fallbackError) {
+      console.warn("WebSocket fallback after retry exhaustion also failed:", fallbackError);
+    }
+    return;
+  }
+
+  // Attempt WebRTC re-negotiation.
+  try {
+    audio.disconnectWebRtc();
+    dc?.close();
+    pc?.close();
+    dc = null;
+    pc = null;
     await openWebRtcConnection(activeProvider?.id, selectedVoice?.id);
     addTimeline("webrtc", "WebRTC transport renegotiated successfully");
+    silentWebRtcReconnect._attempts = 0; // reset on success
+    return; // success — stay on WebRTC
   } catch (e) {
-    console.warn("Silent WebRTC reconnect failed:", e);
+    addTimeline("webrtc", `WebRTC renegotiation failed: ${e.message}`);
+  }
+
+  // WebRTC reconnect failed — fall back to WebSocket PCM.
+  // NOTE: Do NOT reset _attempts here — the counter must accumulate so
+  // the > 2 gate can enforce a hard limit if the fallback path keeps
+  // re-entering WebRTC (e.g. lingering pc.onconnectionstatechange).
+  addTimeline("webrtc", "Switching to WebSocket PCM after WebRTC failure");
+  try {
+    await fallbackToWebSocket("provider-edge WebRTC reconnect failed");
+  } catch (fallbackError) {
+    console.warn("WebSocket fallback after WebRTC failure also failed:", fallbackError);
+    // scheduleReconnect is called inside fallbackToWebSocket on failure.
   }
 }
 
@@ -1429,6 +1651,8 @@ function sendAudioFrame({
 }) {
   mediaTimeUs += 20_000;
   const mediaDc = window.__openliveMediaDc;
+
+  // Path 1: WebRTC media data channel is open — send binary PCM directly.
   if (webrtcMode && mediaDc && mediaDc.readyState === "open") {
     const packet = encodeInputAudio({
       sequence: nextSequence(),
@@ -1443,7 +1667,33 @@ function sendAudioFrame({
     mediaDc.send(packet);
     return;
   }
-  if (webrtcMode) return;
+
+  // Path 2: WebRTC mode but media DC not open (fallback in progress or
+  // channel closed). Fall through to WebSocket instead of dropping the frame.
+  // This prevents silent audio gaps during WebRTC→WebSocket transitions.
+  if (webrtcMode && (!mediaDc || mediaDc.readyState !== "open")) {
+    // If the events DC is also down and we have a WebSocket, use it.
+    if (socket?.readyState === WebSocket.OPEN && sessionId) {
+      socket.send(
+        encodeInputAudio({
+          sequence: nextSequence(),
+          mediaTimeUs: mediaTimeUs - 20_000,
+          pcm,
+          sampleRate: audio.inputSampleRate,
+          frameDurationMs: 20,
+          speechProbability,
+          outputLevel: playbackLevel,
+          echoProbability,
+        }),
+      );
+      telemetry.expectAck();
+    }
+    // If neither transport is ready, the frame is silently dropped.
+    // This is expected during brief transition windows.
+    return;
+  }
+
+  // Path 3: Plain WebSocket PCM mode.
   if (!ready()) return;
   socket.send(
     encodeInputAudio({
@@ -1541,10 +1791,22 @@ function acknowledgePlayout(message) {
   );
 }
 
+function generateEventId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  // Fallback for insecure contexts / older browsers.
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 function sendControl(streamId, eventMediaTimeUs, type, payload, generationId = null) {
   const envelope = {
     protocol_version: PROTOCOL_VERSION,
-    event_id: crypto.randomUUID(),
+    event_id: generateEventId(),
     session_id: sessionId,
     stream_id: streamId,
     sequence: nextSequence(),
@@ -1555,13 +1817,35 @@ function sendControl(streamId, eventMediaTimeUs, type, payload, generationId = n
   if (generationId) envelope.generation_id = generationId;
   const json = JSON.stringify(envelope);
 
-  // Gateway-native WebRTC events channel
+  // Path 1: WebRTC events data channel is open — send via DC.
   if (dc && dc.readyState === "open" && webrtcMode) {
     dc.send(json);
     return;
   }
-  if (!ready()) return;
-  socket.send(json);
+
+  // Path 2: No WebRTC DC, but WebSocket is open — send via WS.
+  // This also covers the fallback transition period when webrtcMode is
+  // still true but the DC has closed and a WebSocket is available.
+  if (socket?.readyState === WebSocket.OPEN && sessionId) {
+    socket.send(json);
+    return;
+  }
+
+  // Path 3: Neither transport is ready.
+  // During a fallback transition, buffer critical control messages briefly
+  // and retry once. Non-critical messages are dropped to avoid spam.
+  if (CRITICAL_CONTROL_TYPES.has(type) && !fallbackInProgress) {
+    addTimeline("transport", `No transport ready for ${type} — will retry after fallback`);
+    // Retry once after a short delay (fallback should complete by then).
+    setTimeout(() => {
+      if (dc?.readyState === "open" && webrtcMode) {
+        dc.send(json);
+      } else if (socket?.readyState === WebSocket.OPEN && sessionId) {
+        socket.send(json);
+      }
+    }, 500);
+  }
+  // Non-critical messages are silently dropped during transition.
 }
 
 /** Lightweight commit for the gateway WebRTC bridge. */
@@ -1607,6 +1891,7 @@ function hardInterruptAssistant(source = "barge-in") {
   // Always silence audio.
   stopBrowserSpeech();
   requestBargeInCancel();
+  receivedMediaForGeneration = false;
 
   // Only kill in-flight *spoken* turns. Let tool work finish in THINKING.
   if (speakingNow) {
@@ -1644,6 +1929,19 @@ function hardInterruptAssistant(source = "barge-in") {
 
 let lastSpokenFinal = "";
 let lastSpokenAt = 0;
+/** Tracks whether we've already received+played streaming PCM for the current
+ * generation. When true, speakAssistant is skipped to avoid double audio. */
+let receivedMediaForGeneration = false;
+
+/** Control message types that should be buffered + retried during a transport
+ * fallback transition (when neither WebRTC DC nor WebSocket is ready yet).
+ * Hoisted to module level so the Set isn't recreated on every sendControl call. */
+const CRITICAL_CONTROL_TYPES = new Set([
+  "session_configured",
+  "interaction_decision",
+  "user_transcript_delta",
+  "user_transcript_final",
+]);
 
 /* ---------------------------------------------------------------------------
    Inbound frames
@@ -1651,9 +1949,16 @@ let lastSpokenAt = 0;
 
 function handleMedia(packet) {
   observeServerSequence(packet.sequence);
-  // Always skip server formant PCM — it caused artifacts + latency.
-  // Natural speech is browser TTS on output_text_final only.
-  return;
+  // Prefer the gateway's native TTS pipeline (Piper/formant) when it is
+  // actively streaming PCM. This is more reliable than browser TTS alone
+  // and avoids the intermittent silence/hang issues seen on Windows
+  // Chrome/Edge with speechSynthesis.
+  if (packet?.pcm?.length > 0 && audio) {
+    receivedMediaForGeneration = true;
+    audio.enqueue(packet).catch((error) => {
+      console.warn("Failed to enqueue server PCM:", error);
+    });
+  }
 }
 
 function handleControl(envelope) {
@@ -1813,8 +2118,11 @@ function handleControl(envelope) {
     if (last && last.role === "assistant" && last.pending && last.generationId === envelope.generation_id) {
       transcript.appendDelta(last.id, payload.delta);
     } else {
-      transcript.beginAssistantStream(envelope.generation_id);
-      transcript.appendDelta(transcript.last().id, payload.delta);
+      // New assistant stream — reset the media flag so a previous turn's
+      // leftover streaming PCM doesn't suppress TTS for this one.
+      receivedMediaForGeneration = false;
+      const entry = transcript.beginAssistantStream(envelope.generation_id);
+      transcript.appendDelta(entry.id, payload.delta);
     }
     renderTranscript(transcript.entries);
     return;
@@ -1838,7 +2146,7 @@ function handleControl(envelope) {
     assistantText = "";
     transcript.finalizeByGeneration(envelope.generation_id, finalText);
     renderTranscript(transcript.entries);
-    // Natural speech only — never play formant PCM (browserTts default on).
+    // Robust TTS: prefer gateway Piper/formant PCM, fall back to browser.
     setup = loadSetup();
     const isSoftAck = /^(mm-?hmm|mhmm|mhm)\.?$/i.test(finalText);
     // Dedupe: gateway can emit the same final twice under race conditions.
@@ -1849,37 +2157,22 @@ function handleControl(envelope) {
       now - lastSpokenAt < 2500;
     if (
       !isDupe &&
-      setup.browserTts !== false &&
-      browserTtsAvailable() &&
       finalText &&
       !userEnded &&
-      mode !== VoiceMode.INTERRUPTED
+      mode !== VoiceMode.INTERRUPTED &&
+      !receivedMediaForGeneration
     ) {
       const speakTurn = assistantTurnId;
       lastSpokenFinal = finalText;
       lastSpokenAt = now;
       transition(VoiceMode.SPEAKING);
-      void speakBrowser(
-        finalText,
-        speechOpts({
-          textHint: finalText,
-          shouldAbort: () =>
-            speakTurn !== assistantTurnId ||
-            mode === VoiceMode.INTERRUPTED ||
-            userEnded,
-        }),
-      ).then((fullySpoken) => {
-        if (
-          fullySpoken &&
-          conversationActive &&
-          microphoneActive &&
-          !userEnded &&
-          mode === VoiceMode.SPEAKING
-        ) {
-          transition(VoiceMode.LISTENING);
-        }
-      });
+      void speakAssistant(finalText, speakTurn, isSoftAck);
+    } else if (receivedMediaForGeneration && !isDupe && finalText && !userEnded) {
+      // Streaming PCM was already played by handleMedia — just transition.
+      transition(VoiceMode.SPEAKING);
     }
+    // Reset the media flag for the next turn.
+    receivedMediaForGeneration = false;
     clearTimeout(transcriptTimer);
     const hold = isSoftAck
       ? 900
@@ -1894,6 +2187,9 @@ function handleControl(envelope) {
     addTimeline("cancel", payload.reason);
     hardInterruptAssistant("server-cancel");
     audio.cancel(envelope.generation_id, payload.fade_ms);
+    // Clear any stale listen-timer from hardInterruptAssistant so the
+    // explicit transition below isn't overridden 320ms later.
+    clearTimeout(hardInterruptAssistant._listenTimer);
     transition(microphoneActive ? VoiceMode.LISTENING : VoiceMode.MUTED);
     return;
   }
@@ -2040,7 +2336,7 @@ function transition(nextMode, detail) {
   // Soft mode chimes for major conversational floor changes only.
   if (
     prev !== nextMode &&
-    ["listening", "speaking", "thinking", "starting", "idle"].includes(nextMode)
+    ["listening", "speaking", "thinking", "starting", "idle", "yielding"].includes(nextMode)
   ) {
     playModeChime(nextMode);
   }
@@ -2061,8 +2357,12 @@ function nextSequence() {
 }
 
 function ready() {
+  // WebRTC path: data channel open + session ID.
   if (webrtcMode && dc?.readyState === "open" && sessionId) return true;
-  return sessionId && socket?.readyState === WebSocket.OPEN;
+  // WebSocket path: socket open + session ID.
+  // Also true during fallback when webrtcMode is still set but a WS is available.
+  if (sessionId && socket?.readyState === WebSocket.OPEN) return true;
+  return false;
 }
 
 /* ---------------------------------------------------------------------------
@@ -2110,9 +2410,35 @@ function persistField(field, value, reconfigure = false) {
 
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
-  document.body.dataset.ui = theme === "minimal" ? "minimal" : "classic";
+  // Both "minimal" and "chatgpt" (Live Presence) use the minimal UI layout.
+  // "classic" is for the older aurora/graphite/signal themes with full rails.
+  document.body.dataset.ui = theme === "minimal" || theme === "chatgpt" ? "minimal" : "classic";
   if (controls.themeSelect) controls.themeSelect.value = theme;
   settings = saveSettings({ theme });
+}
+
+function applyFullscreen(enabled) {
+  const doc = document.documentElement;
+  if (!doc) return;
+  if (enabled) {
+    if (doc.requestFullscreen) {
+      doc.requestFullscreen().catch(() => {});
+    } else if (doc.webkitRequestFullscreen) {
+      doc.webkitRequestFullscreen();
+    }
+  } else if (document.fullscreenElement) {
+    if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    }
+  }
+}
+
+function refreshFullscreenToggle() {
+  if (controls.fullscreenToggle) {
+    controls.fullscreenToggle.checked = settings.fullscreen;
+  }
 }
 
 function applyEntryMode() {
@@ -2413,10 +2739,19 @@ function wireSetupWizard() {
   });
   controls.setupBack?.addEventListener("click", () => {
     playClick("soft");
-    goSetupStep(setupStep - 1);
+    if (setupStep === "voice" || setupStep === 0) {
+      goSetupStep("welcome");
+    } else {
+      goSetupStep(setupStep - 1);
+    }
   });
   controls.setupNext?.addEventListener("click", () => {
-    if (setupStep < 2) {
+    if (setupStep === "welcome") {
+      playClick("tap");
+      expandNextToVoice();
+      return;
+    }
+    if (typeof setupStep === "number" && setupStep < 2) {
       playClick("tap");
       goSetupStep(setupStep + 1);
       return;
@@ -2432,7 +2767,7 @@ function wireSetupWizard() {
     applyProviderPreset(controls.setupLlmProvider.value, "setup");
   });
   controls.setupFetchModels?.addEventListener("click", () => {
-    void fetchModelsInto("setup");
+    void withLoading(controls.setupFetchModels, fetchModelsInto("setup"));
   });
   controls.setupLlmModelSelect?.addEventListener("change", (e) => {
     if (controls.setupLlmModel) controls.setupLlmModel.value = e.target.value;
@@ -2487,7 +2822,9 @@ function wireSetupSettingsBindings() {
     applyProviderPreset(controls.settingsLlmProvider.value, "settings");
     persistLlm();
   });
-  controls.settingsFetchModels?.addEventListener("click", () => void fetchModelsInto("settings"));
+  controls.settingsFetchModels?.addEventListener("click", () =>
+    void withLoading(controls.settingsFetchModels, fetchModelsInto("settings")),
+  );
   controls.settingsLlmModelSelect?.addEventListener("change", (e) => {
     if (controls.settingsLlmModel) controls.settingsLlmModel.value = e.target.value;
     persistLlm();
@@ -2589,7 +2926,7 @@ function wireSetupSettingsBindings() {
     setup = saveSetup({ browserTts: !!e.target.checked });
   });
   controls.settingsProbeAgent?.addEventListener("click", () =>
-    void probeAgentFromForm("settings"),
+    void withLoading(controls.settingsProbeAgent, probeAgentFromForm("settings")),
   );
   controls.reopenSetup?.addEventListener("click", () => {
     toggleSettings(false);
@@ -2598,12 +2935,15 @@ function wireSetupSettingsBindings() {
 }
 
 async function bootstrapLlmUi() {
+  setBootStatus("Connecting to gateway…");
   try {
     const data = await fetchLlmProviders();
     llmProviders = data.providers || [];
   } catch {
     llmProviders = [];
+    setBootStatus("Gateway offline — using defaults…");
   }
+  setBootStatus(llmProviders.length ? "Loading voices…" : "Gateway offline — using defaults…");
   fillProviderSelects();
   // Profile roster (always fill, even if gateway voices fail).
   fillVoiceSelect(OFFLINE_VOICES);
@@ -3294,16 +3634,36 @@ async function runDeepPoolDemo() {
 }
 
 function fillProviderSelects() {
+  // Built-in provider catalog — used as a fallback when the gateway hasn't
+  // started yet (e.g. desktop app launch). This mirrors llm_catalog.rs so
+  // users see all 12 providers immediately instead of just 2.
+  const BUILTIN_PROVIDERS = [
+    { id: "nvidia", name: "NVIDIA NIM", free_tier: true },
+    { id: "groq", name: "Groq", free_tier: true },
+    { id: "openrouter", name: "OpenRouter", free_tier: true },
+    { id: "together", name: "Together AI", free_tier: false },
+    { id: "deepseek", name: "DeepSeek", free_tier: false },
+    { id: "fireworks", name: "Fireworks", free_tier: false },
+    { id: "mistral", name: "Mistral", free_tier: false },
+    { id: "ollama", name: "Ollama (local)", free_tier: true },
+    { id: "openai", name: "OpenAI", free_tier: false },
+    { id: "cerebras", name: "Cerebras", free_tier: true },
+    { id: "sambanova", name: "SambaNova", free_tier: true },
+    { id: "custom", name: "Custom", free_tier: true },
+  ];
+
+  const providers = llmProviders.length ? llmProviders : BUILTIN_PROVIDERS;
+
   for (const sel of [controls.setupLlmProvider, controls.settingsLlmProvider]) {
     if (!sel) continue;
     sel.innerHTML = "";
-    for (const p of llmProviders) {
+    for (const p of providers) {
       const opt = document.createElement("option");
       opt.value = p.id;
       opt.textContent = `${p.name}${p.free_tier ? " · free tier" : ""}`;
       sel.appendChild(opt);
     }
-    if (!llmProviders.length) {
+    if (!providers.length) {
       sel.innerHTML = `<option value="nvidia">NVIDIA NIM · free tier</option><option value="custom">Custom</option>`;
     }
   }
@@ -3402,6 +3762,85 @@ function speechOpts(extra = {}) {
     ),
     ...extra,
   };
+}
+
+/**
+ * Speak assistant text with the best available engine.
+ * Tries gateway TTS (Piper/formant) first, then browser TTS as fallback.
+ * Handles failures gracefully and transitions back to listening when done.
+ */
+async function speakAssistant(text, speakTurn, isSoftAck = false) {
+  const localSetup = loadSetup();
+  const ttsEngine = localSetup.ttsEngine || "auto";
+  const useGatewayTts = ttsEngine !== "browser";
+  let gatewayOk = false;
+
+  // Ensure the audio graph is unlocked before attempting TTS.
+  unlockUiAudio();
+  try {
+    await audio.ensureContext();
+  } catch {
+    /* ignore */
+  }
+
+  if (useGatewayTts) {
+    try {
+      const result = await speakOpenLive(text, {
+        voiceId: localSetup.voiceId || selectedVoice?.id,
+        ttsEngine,
+        langPrefs: speechOpts({ textHint: text }).langPrefs,
+      });
+      gatewayOk = result.ok;
+      if (!gatewayOk && result.error) {
+        addTimeline("tts", `Gateway TTS failed: ${result.error}`);
+      }
+    } catch (error) {
+      addTimeline("tts", `Gateway TTS exception: ${error?.message || String(error)}`);
+    }
+  }
+
+  // Fallback to browser TTS if gateway TTS is disabled or failed.
+  if (!gatewayOk && localSetup.browserTts !== false && browserTtsAvailable()) {
+    try {
+      const fullySpoken = await speakBrowser(
+        text,
+        speechOpts({
+          textHint: text,
+          shouldAbort: () =>
+            speakTurn !== assistantTurnId ||
+            mode === VoiceMode.INTERRUPTED ||
+            userEnded,
+        }),
+      );
+      if (!fullySpoken) {
+        addTimeline("tts", "Browser TTS did not complete");
+      }
+    } catch (error) {
+      addTimeline("tts", `Browser TTS exception: ${error?.message || String(error)}`);
+    }
+  }
+
+  // If neither engine could speak, at least keep the conversation alive.
+  if (!gatewayOk && (localSetup.browserTts === false || !browserTtsAvailable())) {
+    addTimeline("tts", "No TTS engine available; text shown only");
+  }
+
+  // Transition back to listening when appropriate.
+  const hold = isSoftAck
+    ? 900
+    : Math.min(10000, 1200 + text.length * 35);
+  clearTimeout(speakAssistant._listenTimer);
+  speakAssistant._listenTimer = setTimeout(() => {
+    if (
+      conversationActive &&
+      microphoneActive &&
+      !userEnded &&
+      mode === VoiceMode.SPEAKING &&
+      speakTurn === assistantTurnId
+    ) {
+      transition(VoiceMode.LISTENING);
+    }
+  }, hold);
 }
 
 /** Modal with copy-paste Piper install command. */
@@ -3512,7 +3951,11 @@ async function speakAssistantOutLoud(text, extra = {}) {
 }
 
 function applyProviderPreset(providerId, target) {
-  const p = llmProviders.find((x) => x.id === providerId);
+  // Try live providers first, then fall back to built-in details.
+  let p = llmProviders.find((x) => x.id === providerId);
+  if (!p) {
+    p = BUILTIN_PROVIDER_DETAILS[providerId] || null;
+  }
   if (!p && providerId !== "custom") return;
   const base = p?.base_url || "http://127.0.0.1:8000/v1";
   const model = p?.default_model || "default";
@@ -3627,7 +4070,8 @@ async function previewSelectedVoice() {
 function openSetupWizard(opts = {}) {
   setup = loadSetup();
   populateSetupForm(setup);
-  goSetupStep(0);
+  // First-time users see the Welcome screen before the standard steps.
+  goSetupStep("welcome");
   setSetupOpen(true);
   if (opts.force) setOnboardingOpen(false);
 }
@@ -3653,6 +4097,10 @@ function populateSetupForm(cfg) {
     controls.setupProbeStatus.textContent = "";
     controls.setupProbeStatus.className = "setup-probe-status";
   }
+  // Render swipeable voice cards when the wizard is opened.
+  if (controls.setupVoiceSwipe) {
+    renderSetupVoiceCards();
+  }
 }
 
 function populateSetupVoiceSelect(selectedId) {
@@ -3670,33 +4118,90 @@ function populateSetupVoiceSelect(selectedId) {
   select.value = pick.id;
 }
 
+const SETUP_STEPS = ["welcome", "voice", 1, 2];
+
+function setupStepIndex(step) {
+  return SETUP_STEPS.indexOf(step);
+}
+
 function goSetupStep(step) {
-  setupStep = Math.max(0, Math.min(2, step));
+  setupStep = step;
+  const isWelcome = step === "welcome";
+  const isVoice = step === "voice";
+
   document.querySelectorAll(".setup-step").forEach((btn) => {
-    btn.classList.toggle("active", Number(btn.dataset.step) === setupStep);
+    const btnStep = Number(btn.dataset.step);
+    btn.classList.toggle("active", isVoice ? btnStep === 0 : typeof setupStep === "number" && btnStep === setupStep);
   });
+
   document.querySelectorAll(".setup-panel").forEach((panel) => {
-    const active = Number(panel.dataset.panel) === setupStep;
+    const panelKey = panel.dataset.panel;
+    let active = false;
+    if (isWelcome) {
+      active = panelKey === "welcome";
+    } else if (isVoice || setupStep === 0) {
+      active = panelKey === "voice";
+    } else {
+      active = Number(panelKey) === setupStep;
+    }
     panel.hidden = !active;
     panel.classList.toggle("active", active);
-    // Retrigger entrance animation when panel becomes visible.
     if (active) {
       panel.style.animation = "none";
-      // Force reflow
       void panel.offsetWidth;
       panel.style.animation = "";
     }
   });
+
+  const title = document.getElementById("setupTitle");
+  const subtitle = document.getElementById("setupSubtitle");
+  const steps = document.getElementById("setupSteps");
+
+  if (isWelcome) {
+    if (title) title.textContent = "Welcome";
+    if (subtitle) subtitle.textContent = "Let's get you set up so you can start talking.";
+    if (steps) steps.hidden = true;
+    if (controls.setupBack) controls.setupBack.hidden = true;
+    if (controls.setupNext) {
+      controls.setupNext.textContent = "Next";
+      controls.setupNext.classList.add("welcome-next");
+    }
+    return;
+  }
+
+  if (isVoice) {
+    renderSetupVoiceCards();
+  }
+
+  if (title) title.textContent = "Get ready to talk";
+  if (subtitle) {
+    if (setupStep === 2) {
+      subtitle.textContent = "Final step — pick agent preferences, then tap \"Start talking\" to begin.";
+    } else {
+      subtitle.textContent = "Configure voice, model access, and a background agent. You can change these later in Settings.";
+    }
+  }
+  if (steps) steps.hidden = false;
   if (controls.setupBack) controls.setupBack.hidden = setupStep === 0;
   if (controls.setupNext) {
     controls.setupNext.textContent = setupStep === 2 ? "Start talking" : "Continue";
+    controls.setupNext.classList.remove("welcome-next");
   }
 }
 
 function readSetupForm() {
+  // Prefer the swipeable voice card selection, fall back to the legacy select.
+  let voiceId = selectedVoice?.id || setup.voiceId;
+  const activeCard = document.querySelector(".voice-card.active");
+  if (activeCard?.dataset.voiceId) {
+    voiceId = activeCard.dataset.voiceId;
+  } else if (controls.setupVoice?.value) {
+    voiceId = controls.setupVoice.value;
+  }
+
   return {
     displayName: controls.setupDisplayName?.value?.trim() || "",
-    voiceId: controls.setupVoice?.value || selectedVoice?.id || "",
+    voiceId: voiceId || selectedVoice?.id || "",
     stripFillers: controls.setupStripFillers?.checked !== false,
     naturalBackchannels: controls.setupBackchannels?.checked !== false,
     llmProviderId: controls.setupLlmProvider?.value || "nvidia",
@@ -3707,6 +4212,154 @@ function readSetupForm() {
     agentAutoDelegate: controls.setupAutoDelegate?.checked !== false,
     minimalUi: true,
   };
+}
+
+/**
+ * Animate the Welcome "Next" button expanding into the voice selection
+ * interface, then switch to the voice panel.
+ */
+function expandNextToVoice() {
+  const nextBtn = controls.setupNext;
+  if (!nextBtn) {
+    goSetupStep("voice");
+    return;
+  }
+
+  nextBtn.classList.add("is-expanding");
+  nextBtn.disabled = true;
+
+  // Halfway through the expansion, fade the welcome content and swap panels.
+  setTimeout(() => {
+    goSetupStep("voice");
+  }, 350);
+
+  // After expansion completes, clean up the animation class.
+  setTimeout(() => {
+    nextBtn.classList.remove("is-expanding");
+    nextBtn.disabled = false;
+  }, 750);
+}
+
+/**
+ * Render swipeable voice cards into the setup wizard voice panel.
+ */
+function renderSetupVoiceCards() {
+  const container = document.getElementById("setupVoiceSwipe");
+  const dotsContainer = document.getElementById("voiceDots");
+  if (!container) return;
+
+  container.replaceChildren();
+  if (dotsContainer) dotsContainer.replaceChildren();
+
+  const displayVoices = voices.length ? voices : OFFLINE_VOICES;
+  displayVoices.forEach((voice, index) => {
+    const card = document.createElement("div");
+    card.className = "voice-card";
+    card.dataset.voiceId = voice.id;
+    card.setAttribute("role", "option");
+    card.setAttribute("aria-selected", String(voice.id === setup.voiceId));
+    if (voice.id === setup.voiceId) card.classList.add("active");
+
+    const avatar = document.createElement("div");
+    avatar.className = "voice-card-avatar";
+    avatar.textContent = voice.glyph;
+
+    const name = document.createElement("div");
+    name.className = "voice-card-name";
+    name.textContent = voice.name;
+
+    const desc = document.createElement("div");
+    desc.className = "voice-card-desc";
+    desc.textContent = voice.description;
+
+    card.append(avatar, name, desc);
+    card.addEventListener("click", () => {
+      selectSetupVoice(voice.id);
+    });
+    container.appendChild(card);
+
+    if (dotsContainer) {
+      const dot = document.createElement("span");
+      dot.className = "voice-dot";
+      dot.dataset.index = String(index);
+      if (voice.id === setup.voiceId) dot.classList.add("active");
+      dotsContainer.appendChild(dot);
+    }
+  });
+
+  // Scroll the selected voice into view.
+  const selected = container.querySelector(".voice-card.active");
+  if (selected) {
+    selected.scrollIntoView({ behavior: "auto", inline: "center", block: "nearest" });
+  }
+
+  // Update active dot on scroll.
+  container.onscroll = () => updateVoiceDots(container);
+
+  // Keyboard navigation for the listbox.
+  container.onkeydown = (event) => {
+    const cards = [...container.querySelectorAll(".voice-card")];
+    const activeIndex = cards.findIndex((c) => c.classList.contains("active"));
+    let nextIndex = activeIndex;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      nextIndex = Math.min(cards.length - 1, Math.max(0, activeIndex) + 1);
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      nextIndex = Math.max(0, activeIndex - 1);
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (activeIndex >= 0) selectSetupVoice(cards[activeIndex].dataset.voiceId);
+      return;
+    } else {
+      return;
+    }
+    if (nextIndex !== activeIndex && cards[nextIndex]) {
+      event.preventDefault();
+      selectSetupVoice(cards[nextIndex].dataset.voiceId);
+    }
+  };
+}
+
+function selectSetupVoice(voiceId) {
+  setup = saveSetup({ ...setup, voiceId });
+  selectedVoice = selectVoice(voices, voiceId);
+  settings = saveSettings({ voiceId });
+  setVoiceBadge(selectedVoice.glyph);
+
+  document.querySelectorAll(".voice-card").forEach((card) => {
+    card.classList.toggle("active", card.dataset.voiceId === voiceId);
+    card.setAttribute("aria-selected", String(card.dataset.voiceId === voiceId));
+  });
+
+  const container = document.getElementById("setupVoiceSwipe");
+  const selected = container?.querySelector(`.voice-card[data-voice-id="${voiceId}"]`);
+  selected?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  updateVoiceDots(container);
+}
+
+function updateVoiceDots(container) {
+  if (!container) return;
+  const cards = [...container.querySelectorAll(".voice-card")];
+  const center = container.scrollLeft + container.clientWidth / 2;
+  let activeIndex = 0;
+  let closest = Infinity;
+  cards.forEach((card, index) => {
+    const cardCenter = card.offsetLeft + card.clientWidth / 2;
+    const dist = Math.abs(cardCenter - center);
+    if (dist < closest) {
+      closest = dist;
+      activeIndex = index;
+    }
+  });
+
+  // Sync visual active state with the centered card (without writing to storage).
+  cards.forEach((card, index) => {
+    card.classList.toggle("active", index === activeIndex);
+    card.setAttribute("aria-selected", String(index === activeIndex));
+  });
+
+  document.querySelectorAll(".voice-dot").forEach((dot, index) => {
+    dot.classList.toggle("active", index === activeIndex);
+  });
 }
 
 function finishSetupWizard() {
@@ -3986,15 +4639,8 @@ async function runBackgroundAgent(intent, meta = {}) {
       setAssistantText(ack);
     }
     showAgentToast(ack, { holdMs: 2500 });
-    if (setup.browserTts !== false && browserTtsAvailable() && !speechAborted()) {
-      await speakBrowser(
-        ack,
-        speechOpts({
-          textHint: ack,
-          rate: isChineseLang(languagePreference) || hasCjk(intent) ? 1.0 : 1.1,
-          shouldAbort: speechAborted,
-        }),
-      );
+    if (!speechAborted()) {
+      await speakAssistant(ack, assistantTurnId, true);
     }
   } else if (conversationActive) {
     transition(VoiceMode.THINKING, "…");
@@ -4356,6 +5002,125 @@ function microphoneErrorMessage(error) {
     return "No microphone was found. Connect an input device and try again.";
   }
   return error?.message ?? "The conversation could not start.";
+}
+
+/* ---------------------------------------------------------------------------
+   Boot splash lifecycle + ripple click feedback (v26.7.16 UI revamp)
+   --------------------------------------------------------------------------- */
+
+let bootSplashDismissed = false;
+window.__openliveBootStart = performance.now();
+
+/**
+ * Fade out the boot/splash overlay and mark the app as ready.
+ * Called after bootstrapLlmUi completes or a 3s failsafe timeout.
+ */
+/**
+ * Fade out the boot/splash overlay and mark the app shell as ready.
+ * Boot sequence: white sphere scales in, then after 1s "Openlive" slides
+ * out and fades before the splash is removed. The splash stays for at
+ * least 2.4s so the brand animation can complete.
+ */
+function dismissBootSplash() {
+  if (bootSplashDismissed) return;
+  bootSplashDismissed = true;
+
+  // Keep the splash visible long enough for the brand animation to play:
+  // 1s delay + 1.2s slide/fade = ~2.2s minimum. Add a small buffer.
+  const splashStart = window.__openliveBootStart || performance.now();
+  const elapsed = performance.now() - splashStart;
+  const minDuration = 2400;
+  const remaining = Math.max(0, minDuration - elapsed);
+
+  const doDismiss = () => {
+    const splash = document.getElementById("bootSplash");
+    if (splash) {
+      splash.classList.add("is-hidden");
+      setTimeout(() => {
+        if (splash.parentNode) splash.parentNode.removeChild(splash);
+      }, 900);
+    }
+    document.body.dataset.boot = "ready";
+  };
+
+  if (remaining <= 0) {
+    doDismiss();
+  } else {
+    setTimeout(doDismiss, remaining);
+  }
+}
+
+/**
+ * Update the boot status text shown during splash.
+ * @param {string} text
+ */
+function setBootStatus(text) {
+  const el = document.getElementById("bootStatus");
+  if (el) el.textContent = text;
+}
+
+/**
+ * Install Material-style ripple click feedback on interactive elements.
+ * Adds a span.ripple that expands from the click point and fades.
+ */
+function installRippleFeedback() {
+  const selectors = [
+    ".primary-control",
+    ".dock-button",
+    ".icon-button",
+    ".composer-mic",
+    ".composer-icon",
+    ".composer-end",
+    ".setup-primary",
+    ".ghost-button",
+    ".settings-btn",
+    ".setup-step",
+  ];
+
+  document.addEventListener("pointerdown", (event) => {
+    const target = event.target.closest(selectors.join(","));
+    if (!target) return;
+    // Skip if the element is disabled.
+    if (target.disabled || target.getAttribute("aria-disabled") === "true") return;
+
+    const rect = target.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    const x = event.clientX - rect.left - size / 2;
+    const y = event.clientY - rect.top - size / 2;
+
+    const ripple = document.createElement("span");
+    ripple.className = "ripple";
+    ripple.style.width = `${size}px`;
+    ripple.style.height = `${size}px`;
+    ripple.style.left = `${x}px`;
+    ripple.style.top = `${y}px`;
+    target.appendChild(ripple);
+
+    // Clean up after the animation completes.
+    setTimeout(() => {
+      if (ripple.parentNode) ripple.parentNode.removeChild(ripple);
+    }, 650);
+  }, { passive: true });
+}
+
+/**
+ * Set a button to a loading state (spinner) while an async operation runs.
+ * Restores the original label when done. Safe to call on any button element.
+ *
+ * @param {HTMLButtonElement} btn
+ * @param {Promise} promise
+ */
+async function withLoading(btn, promise) {
+  if (!btn) return promise;
+  const wasDisabled = btn.disabled;
+  btn.classList.add("is-loading");
+  btn.disabled = true;
+  try {
+    return await promise;
+  } finally {
+    btn.classList.remove("is-loading");
+    btn.disabled = wasDisabled;
+  }
 }
 
 // Re-exported for testing.

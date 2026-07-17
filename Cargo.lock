@@ -296,9 +296,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-version = "2.13.0"
+version = "2.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
+checksum = "2261d10cca569e4643e526d8dc2e62e433cc8aba21ab764233731f8d369bf394"
 
 [[package]]
 name = "block-buffer"
@@ -566,9 +566,9 @@ dependencies = [
 
 [[package]]
 name = "deranged"
-version = "0.5.8"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
+checksum = "d630bccd429a5bb5a64b5e94f693bfc48c9f8566418fda4c494cc94f911f87cc"
 dependencies = [
  "powerfmt",
 ]
@@ -1325,14 +1325,14 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
 name = "openlive-audio"
-version = "26.7.15"
+version = "26.7.16"
 dependencies = [
  "openlive-protocol",
 ]
 
 [[package]]
 name = "openlive-gateway"
-version = "26.7.15"
+version = "26.7.16"
 dependencies = [
  "axum",
  "bytes",
@@ -1355,7 +1355,7 @@ dependencies = [
 
 [[package]]
 name = "openlive-protocol"
-version = "26.7.15"
+version = "26.7.16"
 dependencies = [
  "serde",
  "serde_json",
@@ -1364,7 +1364,7 @@ dependencies = [
 
 [[package]]
 name = "openlive-provider"
-version = "26.7.15"
+version = "26.7.16"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1383,7 +1383,7 @@ dependencies = [
 
 [[package]]
 name = "openlive-runtime"
-version = "26.7.15"
+version = "26.7.16"
 dependencies = [
  "clap",
  "openlive-protocol",
@@ -1603,7 +1603,7 @@ version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
 dependencies = [
- "bitflags 2.13.0",
+ "bitflags 2.9.4",
 ]
 
 [[package]]
@@ -1889,9 +1889,9 @@ dependencies = [
 
 [[package]]
 name = "semver"
-version = "1.0.28"
+version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
+checksum = "56e6fa9c48d24d85fb3de5ad847117517440f6beceb7798af16b4a87d616b8d0"
 
 [[package]]
 name = "serde"
@@ -2342,7 +2342,7 @@ version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "403fa3b783d4b626a8ad51d766ab03cb6d2dbfc46b1c5d4448395e6628dc9697"
 dependencies = [
- "bitflags 2.13.0",
+ "bitflags 2.9.4",
  "bytes",
  "futures-util",
  "http 1.4.2",

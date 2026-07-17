@@ -137,9 +137,8 @@ impl RealtimeProvider for OpenAiRealtimeProvider {
 
     async fn create_client_secret(&self) -> Result<Option<String>, ProviderError> {
         let client = reqwest::Client::new();
-        let api_key = match &self.config.api_key {
-            Some(key) => key,
-            None => return Ok(None),
+        let Some(api_key) = &self.config.api_key else {
+            return Ok(None);
         };
         let response = client
             .post("https://api.openai.com/v1/realtime/client_secrets")
@@ -156,8 +155,7 @@ impl RealtimeProvider for OpenAiRealtimeProvider {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
             return Err(ProviderError::Unavailable(format!(
-                "failed to create client secret: status={}, response={}",
-                status, text
+                "failed to create client secret: status={status}, response={text}"
             )));
         }
 

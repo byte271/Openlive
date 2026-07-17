@@ -1,4 +1,4 @@
-# Openlive protocol 1.0 (baseline for v26.7.15)
+# Openlive protocol 1.0 (baseline for v26.7.16)
 
 One WebSocket carries two ordered message classes:
 

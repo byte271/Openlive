@@ -9,7 +9,7 @@
 //! the full MCP SSE/stdio surface — that can layer on later.
 //!
 //! Spec inspiration: Anthropic MCP (open protocol). This file is original
-//! OpenLive code.
+//! `OpenLive` code.
 
 use std::time::Duration;
 
@@ -80,13 +80,9 @@ impl McpClient {
     pub async fn list_tools(&self) -> Result<Vec<McpTool>, McpError> {
         let result = self.rpc("tools/list", json!({})).await?;
         // Accept `{ tools: [...] }` or bare array.
-        let tools_value = result
-            .get("tools")
-            .cloned()
-            .unwrap_or(result);
-        let tools: Vec<McpTool> = serde_json::from_value(tools_value).map_err(|error| {
-            McpError::Rpc(format!("invalid tools/list payload: {error}"))
-        })?;
+        let tools_value = result.get("tools").cloned().unwrap_or(result);
+        let tools: Vec<McpTool> = serde_json::from_value(tools_value)
+            .map_err(|error| McpError::Rpc(format!("invalid tools/list payload: {error}")))?;
         Ok(tools)
     }
 

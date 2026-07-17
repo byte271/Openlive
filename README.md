@@ -7,11 +7,11 @@ OpenLive is an open, model-neutral runtime for continuous voice agents. It separ
 
 ## Current status
 
-**Version 26.7.15** (`v26.7.15`) targets a **GPT-Live-comparable** experience: polished live voice UI, open neural speech (Piper), client-side audio intelligence, WebRTC session path, semantic endpointing, **real tools + multi-agent sandbox**, and durable profile/memory — with original visuals and model neutrality intact.
+**Version 26.7.16** (`v26.7.16`) targets a **GPT-Live-comparable** experience: polished live voice UI, open neural speech (Piper), client-side audio intelligence, WebRTC session path, semantic endpointing, **real tools + multi-agent sandbox**, and durable profile/memory — with original visuals and model neutrality intact.
 
-Full parity matrix: [`docs/gpt-live-parity.md`](docs/gpt-live-parity.md) · Architecture roadmap: [`docs/architecture-roadmap.md`](docs/architecture-roadmap.md) · Open stack guide: [`docs/open-source-stack.md`](docs/open-source-stack.md) · Credits: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) · Release notes: [`docs/release-26.7.15.md`](docs/release-26.7.15.md)
+Full parity matrix: [`docs/gpt-live-parity.md`](docs/gpt-live-parity.md) · Architecture roadmap: [`docs/architecture-roadmap.md`](docs/architecture-roadmap.md) · Open stack guide: [`docs/open-source-stack.md`](docs/open-source-stack.md) · Credits: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) · Release notes: [`docs/release-26.7.16.md`](docs/release-26.7.16.md)
 
-### What 26.7.15 ships
+### What 26.7.16 ships
 
 **Voice surface**
 
@@ -20,12 +20,15 @@ Full parity matrix: [`docs/gpt-live-parity.md`](docs/gpt-live-parity.md) · Arch
 - Inline layout toggle, live dual transcript, conversation modes, speaking-style axes.
 - Push-to-talk, barge-in with local duck, camera/screen share affordances, visual cards.
 - **Piper-first voice roster** (Lessac, Amy, Ryan, …) plus API-compatible fallbacks.
-- Brand chrome and package version: **26.7.15**.
+- **Boot splash** with live status and animated page-load entrance.
+- **Ripple click feedback** and enhanced hover/lift micro-interactions across the UI.
+- Brand chrome and package version: **26.7.16**.
 
 **Open AI voice**
 
 - Production path: cascade → OpenAI-compatible **Piper** TTS (via LocalAI, openedai-speech, or gateway-local Piper).
 - Gateway: `GET /v1/tts/status`, `POST /v1/tts/speak`; formant fallback for demos.
+- **Graceful TTS fallback chain**: gateway TTS (Piper/formant) → browser TTS → text-only, so the conversation never hangs.
 - Licenses and attribution in `THIRD_PARTY_NOTICES.md`.
 
 **Client audio intelligence**
@@ -46,14 +49,22 @@ Full parity matrix: [`docs/gpt-live-parity.md`](docs/gpt-live-parity.md) · Arch
 
 - Binary WebSocket PCM + **gateway-native WebRTC** (DTLS data channels for events/PCM).
 - Provider-edge WebRTC (OpenAI Realtime SDP) when secrets are available.
+- **Coordinated WebRTC → WebSocket fallback**: guarded re-entry, retry limit, and clean audio/TTS state reset so a failed peer connection recovers without dropping the conversation.
 - `POST /v1/webrtc/offer` answers browser offers; `POST /v1/realtime/session` for edge secrets.
 - **Moshi** native duplex: `--provider moshi --moshi-url ws://127.0.0.1:8998/api/chat`.
+- **Built-in LLM provider catalog**: NVIDIA NIM, Groq, OpenRouter, Together, DeepSeek, Fireworks, Mistral, Ollama, OpenAI, Cerebras, SambaNova, and Custom — selectable in setup/settings even before the gateway is ready.
 - Semantic endpointing (transcript-aware early end ~200 ms).
 - Visual cards + live translation demo (mock) / language-mode instructions.
 - Task lifecycle, evidence links, resume with dedup.
 - Configurable `--task-deadline-ms`.
 - Developer API: `GET /health`, `/v1/meta`, `/v1/sessions`, `/v1/agent/*`, `/v1/sandbox/*`, `/v1/profile`, MCP tools (+ optional API key).
 - Session persistence (JSONL under `data/openlive-sessions`), streaming safety holdback, MCP HTTP client.
+
+**Desktop & fullscreen**
+
+- **Tauri-based desktop shells** for Windows (MSI) and macOS (DMG/App) in `apps/openlive-desktop/`.
+- **Full-screen voice mode** with hidden chrome, hover-to-reveal controls, and a dedicated exit button / `F` shortcut.
+- Keyboard shortcuts for layout, fullscreen, camera, screen share, voice picker, and more.
 
 ### Still missing (vs full GPT-Live)
 
@@ -113,6 +124,23 @@ cargo run -p openlive-gateway --release -- \
   --realtime-model your-realtime-model \
   --voice alloy
 ```
+
+## Desktop app (Windows / macOS)
+
+OpenLive ships a Tauri v2 desktop shell in `apps/openlive-desktop`. The shell
+loads the same web UI as the browser and can spawn the gateway as a child
+process.
+
+```bash
+# Build the gateway first, then the desktop app
+cargo build -p openlive-gateway --release
+cd apps/openlive-desktop
+cargo tauri build
+```
+
+Supported bundles: Windows MSI, macOS DMG/App. See
+[`apps/openlive-desktop/README.md`](apps/openlive-desktop/README.md) for dev
+mode and platform prerequisites.
 
 ## Deterministic replay
 

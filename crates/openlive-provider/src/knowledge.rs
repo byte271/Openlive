@@ -7,6 +7,7 @@
 //!
 //! Swap later for embeddings + a real vector store behind the same trait.
 
+use std::fmt::Write as _;
 use std::{fs, path::Path};
 
 use thiserror::Error;
@@ -60,10 +61,10 @@ impl KnowledgeStore {
                 continue;
             }
             let text = fs::read_to_string(&path)?;
-            let source = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| path.display().to_string());
+            let source = path.file_name().map_or_else(
+                || path.display().to_string(),
+                |n| n.to_string_lossy().into_owned(),
+            );
             for (index, piece) in chunk_text(&text, 600).into_iter().enumerate() {
                 let tokens = tokenize(&piece);
                 if tokens.is_empty() {
@@ -120,11 +121,10 @@ impl KnowledgeStore {
         if hits.is_empty() {
             return None;
         }
-        let mut out = String::from(
-            "Relevant operator knowledge (use only if it helps answer accurately):\n",
-        );
+        let mut out =
+            String::from("Relevant operator knowledge (use only if it helps answer accurately):\n");
         for (i, hit) in hits.iter().enumerate() {
-            out.push_str(&format!("{}. {}\n", i + 1, hit));
+            let _ = writeln!(out, "{}. {}", i + 1, hit);
         }
         Some(out)
     }
@@ -158,7 +158,7 @@ pub fn needs_deep_cognition(transcript: &str) -> bool {
     ];
     MARKERS.iter().any(|m| t.contains(m))
         || t.contains('?') && words >= 18
-        || t.chars().filter(|c| c.is_ascii_digit()).count() >= 6
+        || t.chars().filter(char::is_ascii_digit).count() >= 6
 }
 
 fn chunk_text(text: &str, max_chars: usize) -> Vec<String> {
@@ -208,10 +208,10 @@ fn overlap_score(query: &[String], doc: &[String]) -> f32 {
 }
 
 const STOP: &[&str] = &[
-    "the", "and", "for", "that", "with", "this", "from", "your", "have", "are",
-    "was", "were", "been", "will", "would", "could", "should", "about", "into",
-    "what", "when", "where", "which", "while", "than", "then", "them", "they",
-    "you", "but", "not", "all", "can", "our", "out", "how", "who", "why",
+    "the", "and", "for", "that", "with", "this", "from", "your", "have", "are", "was", "were",
+    "been", "will", "would", "could", "should", "about", "into", "what", "when", "where", "which",
+    "while", "than", "then", "them", "they", "you", "but", "not", "all", "can", "our", "out",
+    "how", "who", "why",
 ];
 
 #[cfg(test)]

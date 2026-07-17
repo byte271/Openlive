@@ -1,7 +1,7 @@
-//! Lightweight full-duplex timing bench for OpenLive.
+//! Lightweight full-duplex timing bench for `OpenLive`.
 //!
 //! Measures local Chronos endpointing + decision overhead without network.
-//! Useful as a regression gate until full VoiceBench datasets are wired.
+//! Useful as a regression gate until full `VoiceBench` datasets are wired.
 //!
 //! ```text
 //! cargo run -p openlive-runtime --release --bin openlive-full-duplex-bench -- --turns 50
@@ -128,6 +128,11 @@ fn percentile(sorted: &[f64], p: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;
     }
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
     let idx = ((sorted.len() as f64 - 1.0) * p).round() as usize;
     sorted[idx.min(sorted.len() - 1)]
 }

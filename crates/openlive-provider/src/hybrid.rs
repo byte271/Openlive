@@ -6,19 +6,17 @@
 //!
 //! When no deep provider is configured, behaves like the mock duplex provider.
 
+use crate::{
+    knowledge::needs_deep_cognition, mock::MockDuplexProvider,
+    openai_compatible::OpenAiCompatibleProvider, ProviderEmission, ProviderError, ProviderInput,
+    ProviderSession, ProviderSessionRequest, RealtimeProvider,
+};
 use async_trait::async_trait;
 use openlive_protocol::{
     AudioCapabilities, ControlCapabilities, DuplexCapabilities, LicenseClass, Modality,
     ModalityCapabilities, ProviderClass, ProviderLimits, ProviderManifest,
 };
 use tokio::sync::mpsc;
-use crate::{
-    knowledge::needs_deep_cognition,
-    mock::MockDuplexProvider,
-    openai_compatible::OpenAiCompatibleProvider,
-    ProviderEmission, ProviderError, ProviderInput, ProviderSession, ProviderSessionRequest,
-    RealtimeProvider,
-};
 
 #[derive(Clone)]
 pub struct HybridStreamingProvider {

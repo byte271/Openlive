@@ -2,9 +2,9 @@
 
 This document is a release gate, not a roadmap claim. A feature is **verified** only when its implementation and reproducible tests are present in this repository.
 
-## Verified in 26.7.15
+## Verified in 26.7.16
 
-Carries forward all verified items from 26.7.14.1, plus the 26.7.15 agent/voice workspace:
+Carries forward all verified items from 26.7.14.1, plus the 26.7.16 agent/voice workspace:
 
 ### Voice, transport, continuity (from 26.7.14 → 26.7.15)
 
@@ -28,7 +28,7 @@ Carries forward all verified items from 26.7.14.1, plus the 26.7.15 agent/voice 
 - Gateway-native WebRTC data-channel path + provider-edge session + jitter/PLC on PCM.
 - Piper TTS status/speak endpoints + formant fallback; open-stack docs.
 
-### Agent, tools, sandbox, profile (26.7.15)
+### Agent, tools, sandbox, profile (26.7.16)
 
 - Typed agent tool loop: search, deep_search, research_pool, calculator, time, identity, sandbox file I/O, browse, optional headless screenshot/PDF, profile remember/get.
 - Path-confined sandbox under app data dir; list/read/write/delete REST + tools.
@@ -36,7 +36,20 @@ Carries forward all verified items from 26.7.14.1, plus the 26.7.15 agent/voice 
 - Multi-agent pool (hard cap 50) with start/status/SSE events and agent class allow-lists.
 - Durable user profile (facts CRUD/reorder) and session memory export.
 - Model status codes on agent/LLM error responses.
-- Version surface aligned: Cargo `26.7.15`, UI badge `26.7.15`, docs v26.7.15.
+- Version surface aligned: Cargo `26.7.16`, UI badge `26.7.16`, docs v26.7.16.
+
+### Desktop, fullscreen & UI polish (26.7.16)
+
+- Tauri v2 desktop shell for Windows (MSI) and macOS (DMG/App) in
+  `apps/openlive-desktop/`.
+- Full-screen voice mode with hidden chrome, hover-to-reveal controls, and
+  dedicated exit button / `F` shortcut.
+- Boot splash with live status text and 3 s failsafe dismissal.
+- Ripple click feedback, button hover lift, sheet spring entrance, orb glow
+  pulse, toast/backchannel scale, transcript revision flash, and ambient
+  background breathing.
+- Built-in LLM provider catalog (12 providers) available before gateway
+  connection.
 
 These are validated with the workspace Rust test suite, JS protocol/task tests, Clippy/fmt gates as run by operators, and an optimized release build. Expand the exact pass counts in CI when CI is wired.
 
@@ -70,7 +83,7 @@ These are validated with the workspace Rust test suite, JS protocol/task tests, 
 7. Real-browser audio E2E tests with virtual audio devices.
 8. Network impairment, overload, soak, restart, and provider-failure suites.
 9. Published benchmark manifests and raw results. No parity claim without them.
-10. Version consistency: workspace `26.7.15`, UI chrome `26.7.15`, living docs `26.7.15`.
+10. Version consistency: workspace `26.7.16`, UI chrome `26.7.16`, living docs `26.7.16`.
 
 ## Delivery order
 

@@ -1,5 +1,5 @@
 /**
- * OpenLive 26.7.15 — emotion feature extractor (client-side).
+ * OpenLive 26.7.16 — emotion feature extractor (client-side).
  *
  * Estimates valence / arousal from pitch contour, speech rate proxies, and
  * spectral tilt. Used to modulate VAD barge-in sensitivity and endpointing

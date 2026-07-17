@@ -1,9 +1,9 @@
-# OpenLive architecture roadmap (v26.7.15)
+# OpenLive architecture roadmap (v26.7.16)
 
 This document captures the target architecture beyond the current voice+tools MVP.
-**Baseline release:** [26.7.15](release-26.7.15.md) · Parity: [gpt-live-parity.md](gpt-live-parity.md)
+**Baseline release:** [26.7.16](release-26.7.16.md) · Parity: [gpt-live-parity.md](gpt-live-parity.md)
 
-## Now (implemented foundation — 26.7.15)
+## Now (implemented foundation — 26.7.16)
 
 - Deterministic tools: `web_search`, `deep_search`, `research_pool`, `calculator`, `get_time`, `identity`, sandbox `list/read/write_file`
 - Typo correction for ASR/search
@@ -14,6 +14,11 @@ This document captures the target architecture beyond the current voice+tools MV
 - **Multi-agent pool** `POST /v1/agent/pool` (≤50 workers, default 4 search agents)
 - **Sandbox workspace** under `%LOCALAPPDATA%\openlive\sandbox` + Settings UI file list
 - **Model HTTP status codes** on `/v1/agent/run` and `/v1/llm/*` errors (`model_status`, `http_status`)
+- **Built-in LLM provider catalog** (12 providers) usable before gateway connection
+- **Coordinated WebRTC → WebSocket fallback** with re-entry guard and retry cap
+- **Desktop shell** (Tauri v2) for Windows MSI and macOS DMG/App
+- **Full-screen voice mode** with hover-to-reveal chrome and `F` shortcut
+- **Boot splash + ripple feedback + enhanced motion** across the voice surface
 
 ## Next
 

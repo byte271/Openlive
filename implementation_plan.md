@@ -1,7 +1,7 @@
 # OpenLive → GPT-Live Parity — Implementation Plan
 
 **Status date:** 2026-07-15  
-**Baseline:** **26.7.15** (Live Presence + open voice stack)  
+**Baseline:** **26.7.16** (Live Presence + open voice stack)  
 **Goal:** Model-neutral, open, production-grade competitor to OpenAI GPT-Live / Advanced Voice Mode.
 
 ---
@@ -26,7 +26,7 @@
 
 ## Phase status
 
-### Phase 1: Client-Side Intelligence & Audio Quality — **DONE (v26.7.15)**
+### Phase 1: Client-Side Intelligence & Audio Quality — **DONE (v26.7.16)**
 
 | Item | Status | Notes |
 |------|--------|-------|
@@ -70,7 +70,7 @@
 | Moshi WebSocket adapter | **Done** | `moshi.rs` + `--provider moshi` |
 | Multi-model Fast / Deep cognition | **Done** | `--deep-llm-model` + heuristic router |
 
-### Phase 5: Safety, MCP, Retrieval, Agent workspace — **PARTIAL (strong in 26.7.15)**
+### Phase 5: Safety, MCP, Retrieval, Agent workspace — **PARTIAL (strong in 26.7.16)**
 
 | Item | Status | Notes |
 |------|--------|-------|
@@ -99,6 +99,10 @@
 |------|--------|-------|
 | `chatgpt` theme + CSS variables | **Done** | `styles.css`, `settings-store.js` |
 | Wave-Particle orb (Canvas 2D) | **Done** | `voice-visualizer.js` Bezier blobs + particle ring |
+| Boot splash + live status | **Done** | `app.js` + `index.html` + `styles.css` |
+| Full-screen voice mode | **Done** | Settings toggle, `F` shortcut, exit button |
+| Ripple click feedback + loading states | **Done** | `app.js` + `styles.css` |
+| Page-load / sheet / button / toast animations | **Done** | `styles.css` v26.7.16 animation section |
 | Three.js WebGL Icosphere + GLSL | **Todo** | |
 
 ### Phase 8: Emotion-Aware Responses — **PARTIAL**
@@ -122,20 +126,30 @@
 |------|--------|-------|
 | Provider chip + enriched `/v1/providers` | **Done** | Features map, recommended Piper voices |
 | Provider catalog | **Done** | `GET /v1/providers/catalog` + `--provider hybrid` |
+| Built-in provider catalog (offline setup) | **Done** | 12 providers in `app.js` BUILTIN_PROVIDER_DETAILS |
 | Developer REST (`/health` JSON, `/v1/meta`, `/v1/sessions`, `/v1/tasks`) | **Done** | Optional `OPENLIVE_API_KEY` |
 | Transcript export | **Done** | Client JSON export + `GET /v1/sessions/{id}/transcript` |
 | VisualCard + live translation (mock) | **Done** | Protocol rev 4; language chip injects translate mode |
 | Multi-process provider hot-swap UI | **Todo** | Restart with `--provider` still required |
 
+### Phase 11: Desktop & Distribution — **PARTIAL**
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Tauri v2 shell | **Done** | `apps/openlive-desktop/` Windows MSI + macOS DMG/App |
+| Gateway child-process spawn | **Done** | `main.rs` waits for health, kills on exit |
+| Auto-updater / code signing | **Todo** | |
+| Linux AppImage / Flatpak | **Todo** | |
+
 ---
 
-## Shipped in working tree as of 26.7.15
+## Shipped in working tree as of 26.7.16
 
 - WebRTC signaling + gateway-native data-channel path + browser peer
 - Semantic VAD hybrid + cascade ASR prior window + revise UI
 - Live Presence / minimal-black UI + Piper TTS + formant fallback
 - Agent tools, multi-agent pool, sandbox, profile/memory, confirms
-- Version surface: Cargo / UI / living docs all **26.7.15**
+- Version surface: Cargo / UI / living docs all **26.7.16**
 
 ---
 

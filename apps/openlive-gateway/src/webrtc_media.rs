@@ -1,6 +1,6 @@
 //! Gateway-native WebRTC peer sessions (webrtc-rs).
 //!
-//! ICE/DTLS via WebRTC-rs; OpenLive media rides on data channels:
+//! ICE/DTLS via WebRTC-rs; `OpenLive` media rides on data channels:
 //! - `openlive-events` — JSON control (same envelopes as WebSocket)
 //! - `openlive-media` — unordered binary PCM16 LE (app-layer framing)
 //!
@@ -102,10 +102,11 @@ impl WebRtcHub {
         self.peers.lock().map(|g| g.len()).unwrap_or(0)
     }
 
-    /// Answer a browser SDP offer. Returns (answer_sdp, session).
+    /// Answer a browser SDP offer. Returns (`answer_sdp`, session).
     ///
     /// # Errors
     /// Returns on SDP or peer-connection failures.
+    #[allow(clippy::too_many_lines)]
     pub async fn accept_offer(
         &self,
         offer_sdp: &str,
@@ -136,8 +137,7 @@ impl WebRtcHub {
         let (outbound_tx, mut outbound_rx) = mpsc::channel::<PeerOutbound>(64);
         let events_open = Arc::new(AtomicBool::new(false));
         let media_open = Arc::new(AtomicBool::new(false));
-        let events_holder: Arc<Mutex<Option<Arc<RTCDataChannel>>>> =
-            Arc::new(Mutex::new(None));
+        let events_holder: Arc<Mutex<Option<Arc<RTCDataChannel>>>> = Arc::new(Mutex::new(None));
         let media_holder: Arc<Mutex<Option<Arc<RTCDataChannel>>>> = Arc::new(Mutex::new(None));
 
         let events_dc = pc
@@ -163,28 +163,28 @@ impl WebRtcHub {
             .map_err(|e| WebRtcError::Internal(e.to_string()))?;
 
         {
-            let mut g = events_holder.lock().map_err(|e| {
-                WebRtcError::Internal(format!("events lock: {e}"))
-            })?;
+            let mut g = events_holder
+                .lock()
+                .map_err(|e| WebRtcError::Internal(format!("events lock: {e}")))?;
             *g = Some(events_dc.clone());
         }
         {
-            let mut g = media_holder.lock().map_err(|e| {
-                WebRtcError::Internal(format!("media lock: {e}"))
-            })?;
+            let mut g = media_holder
+                .lock()
+                .map_err(|e| WebRtcError::Internal(format!("media lock: {e}")))?;
             *g = Some(media_dc.clone());
         }
 
         wire_channel(
-            events_dc,
+            &events_dc,
             inbound_tx.clone(),
-            events_open.clone(),
+            &events_open,
             ChannelKind::Events,
         );
         wire_channel(
-            media_dc,
+            &media_dc,
             inbound_tx.clone(),
-            media_open.clone(),
+            &media_open,
             ChannelKind::Media,
         );
 
@@ -217,7 +217,7 @@ impl WebRtcHub {
                     ChannelKind::Events => events_open_pc,
                     ChannelKind::Media => media_open_pc,
                 };
-                wire_channel(d, inbound_pc, flag, kind);
+                wire_channel(&d, inbound_pc, &flag, kind);
             })
         }));
 
@@ -252,10 +252,7 @@ impl WebRtcHub {
                         }
                     }
                     PeerOutbound::MediaBinary(bin) if media_open_w.load(Ordering::Relaxed) => {
-                        let ch = media_holder_w
-                            .lock()
-                            .ok()
-                            .and_then(|g| g.as_ref().cloned());
+                        let ch = media_holder_w.lock().ok().and_then(|g| g.as_ref().cloned());
                         if let Some(ch) = ch {
                             let _ = ch.send(&Bytes::from(bin)).await;
                         }
@@ -300,7 +297,7 @@ impl WebRtcHub {
         ))
     }
 
-    /// Drop a peer from the hub map and close its PeerConnection.
+    /// Drop a peer from the hub map and close its `PeerConnection`.
     #[allow(dead_code)]
     pub async fn close_peer(&self, id: Uuid) {
         let pc = self.peers.lock().ok().and_then(|mut g| g.remove(&id));
@@ -335,11 +332,12 @@ enum ChannelKind {
 }
 
 fn wire_channel(
-    d: Arc<RTCDataChannel>,
+    d: &Arc<RTCDataChannel>,
     inbound: mpsc::Sender<PeerInbound>,
-    open_flag: Arc<AtomicBool>,
+    open_flag: &Arc<AtomicBool>,
     kind: ChannelKind,
 ) {
+    let d = d.clone();
     let open_o = open_flag.clone();
     d.on_open(Box::new(move || {
         open_o.store(true, Ordering::Relaxed);
@@ -368,4 +366,3 @@ fn wire_channel(
         })
     }));
 }
-

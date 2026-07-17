@@ -40,6 +40,7 @@ fn purge(map: &mut HashMap<String, Session>) {
 }
 
 /// Append a turn and return a compact context string for the LLM.
+#[must_use]
 pub fn append_and_context(session_id: &str, role: &str, text: &str, take: usize) -> String {
     let sid = session_id.trim();
     if sid.is_empty() {
@@ -68,6 +69,7 @@ pub fn append_and_context(session_id: &str, role: &str, text: &str, take: usize)
     context_only(sid, take)
 }
 
+#[must_use]
 pub fn context_only(session_id: &str, take: usize) -> String {
     let sid = session_id.trim();
     if sid.is_empty() {
@@ -100,6 +102,7 @@ pub fn clear_session(session_id: &str) {
     }
 }
 
+#[must_use]
 pub fn session_stats() -> serde_json::Value {
     let Ok(mut g) = store().lock() else {
         return serde_json::json!({ "sessions": 0 });
@@ -120,7 +123,7 @@ mod tests {
     fn rolls_context() {
         let id = "test-sess-1";
         clear_session(id);
-        append_and_context(id, "user", "hello", 6);
+        let _ = append_and_context(id, "user", "hello", 6);
         let ctx = append_and_context(id, "assistant", "hi there", 6);
         assert!(ctx.contains("hello"));
         assert!(ctx.contains("hi there"));

@@ -16,10 +16,7 @@ pub enum LlmError {
     Http(#[from] reqwest::Error),
     /// Upstream model API returned a non-success HTTP status (or invalid body).
     #[error("llm rejected ({status}): {body}")]
-    Rejected {
-        status: u16,
-        body: String,
-    },
+    Rejected { status: u16, body: String },
     #[error("llm config: {0}")]
     Config(String),
 }
@@ -30,7 +27,7 @@ impl LlmError {
     pub fn status_code(&self) -> u16 {
         match self {
             Self::Rejected { status, .. } => *status,
-            Self::Http(e) => e.status().map(|s| s.as_u16()).unwrap_or(0),
+            Self::Http(e) => e.status().map_or(0, |s| s.as_u16()),
             Self::Config(_) => 0,
         }
     }
@@ -74,7 +71,7 @@ impl LlmSettings {
             s.base_url = p.base_url;
             s.model = p.default_model;
         } else {
-            s.provider_id = provider_id.to_owned();
+            provider_id.clone_into(&mut s.provider_id);
         }
         s
     }
@@ -226,7 +223,7 @@ impl LlmBridge {
         }
         // NVIDIA catalog sometimes wants this header.
         if s.base_url.contains("nvidia.com") {
-            req = req.header("User-Agent", "OpenLive/26.7.15");
+            req = req.header("User-Agent", "OpenLive/26.7.16");
         }
         let resp = req.send().await?;
         let status = resp.status();
@@ -291,8 +288,7 @@ impl LlmBridge {
                 format!("{status}: {}", truncate(&text, 400)),
             ));
         }
-        serde_json::from_str(&text)
-            .map_err(|e| LlmError::rejected(502, e.to_string()))
+        serde_json::from_str(&text).map_err(|e| LlmError::rejected(502, e.to_string()))
     }
 
     /// List models from the configured (or override) base URL.
@@ -325,8 +321,8 @@ impl LlmBridge {
                 format!("{status}: {}", truncate(&text, 400)),
             ));
         }
-        let value: Value = serde_json::from_str(&text)
-            .map_err(|e| LlmError::rejected(502, e.to_string()))?;
+        let value: Value =
+            serde_json::from_str(&text).map_err(|e| LlmError::rejected(502, e.to_string()))?;
         let mut ids = Vec::new();
         if let Some(arr) = value.get("data").and_then(Value::as_array) {
             for item in arr {
@@ -343,25 +339,8 @@ impl LlmBridge {
 fn strip_fillers_for_llm(text: &str) -> String {
     let lower = text.to_ascii_lowercase();
     let fillers = [
-        "you know",
-        "i mean",
-        "sort of",
-        "kind of",
-        "uh-huh",
-        "uh huh",
-        "uhm",
-        "erm",
-        "mmm",
-        "mhmm",
-        "mhm",
-        "hmm",
-        "um",
-        "uh",
-        "er",
-        "ah",
-        "eh",
-        "hm",
-        "mm",
+        "you know", "i mean", "sort of", "kind of", "uh-huh", "uh huh", "uhm", "erm", "mmm",
+        "mhmm", "mhm", "hmm", "um", "uh", "er", "ah", "eh", "hm", "mm",
     ];
     let mut out = lower;
     for f in fillers {
@@ -444,10 +423,7 @@ fn extract_content(value: &Value) -> Option<String> {
         }
     }
     // Nested choices[0].message as string (rare)
-    if let Some(c) = value
-        .pointer("/choices/0/message")
-        .and_then(Value::as_str)
-    {
+    if let Some(c) = value.pointer("/choices/0/message").and_then(Value::as_str) {
         let t = strip_internal_thinking(c);
         if !t.is_empty() {
             return Some(t);
@@ -504,7 +480,7 @@ fn strip_internal_thinking(text: &str) -> String {
     t.trim().to_owned()
 }
 
-/// Extract tool_calls from a chat completion message if present.
+/// Extract `tool_calls` from a chat completion message if present.
 #[must_use]
 pub fn message_tool_calls(message: &Value) -> Vec<Value> {
     message

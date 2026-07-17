@@ -30,3 +30,12 @@ tmp-*.txt
 *.swp
 *~
 Thumbs.db
+
+# Freebuff Desktop runtime state
+.freebuff/
+
+# Clippy debug artifacts
+clippy_*.txt
+
+# npm dependencies (if ever installed locally)
+node_modules/

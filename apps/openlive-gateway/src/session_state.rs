@@ -5,8 +5,9 @@ use std::{
 };
 
 use openlive_protocol::{
-    EvidenceKind, EvidenceLink, EvidenceLinkType, LatencyMark, LatencyPhase, ProviderLifecycleState,
-    RealtimeEvent, TaskAcknowledged, TaskRequested, TaskResultKind, TaskStatus,
+    EvidenceKind, EvidenceLink, EvidenceLinkType, LatencyMark, LatencyPhase,
+    ProviderLifecycleState, RealtimeEvent, TaskAcknowledged, TaskRequested, TaskResultKind,
+    TaskStatus,
 };
 use uuid::Uuid;
 
@@ -343,7 +344,9 @@ impl TaskOrchestrator {
             .any(|kind| matches!(kind, EvidenceKind::Visual))
             && provider_id.is_none()
         {
-            warnings.push("no provider bound to this task; visual evidence may be unavailable".to_owned());
+            warnings.push(
+                "no provider bound to this task; visual evidence may be unavailable".to_owned(),
+            );
         }
         let record = TaskRecord {
             task_id: request.task_id,
@@ -366,10 +369,7 @@ impl TaskOrchestrator {
     /// new generation starts so tasks admitted between turns get attached
     /// to the upcoming generation. Returns the ids of tasks that were
     /// bound (for diagnostics / logging).
-    pub(crate) fn bind_pending_to_generation(
-        &mut self,
-        generation_id: Uuid,
-    ) -> Vec<Uuid> {
+    pub(crate) fn bind_pending_to_generation(&mut self, generation_id: Uuid) -> Vec<Uuid> {
         let mut bound = Vec::new();
         for record in self.active.values_mut() {
             if record.generation_id.is_none() {
@@ -452,11 +452,7 @@ impl TaskOrchestrator {
     /// `evidence_id`, or `None` if no link exists. Used by the evidence
     /// matrix to render link strength.
     #[cfg(test)]
-    pub(crate) fn link_confidence(
-        &self,
-        task_id: Uuid,
-        evidence_id: Uuid,
-    ) -> Option<f32> {
+    pub(crate) fn link_confidence(&self, task_id: Uuid, evidence_id: Uuid) -> Option<f32> {
         self.links_by_source
             .get(&task_id)?
             .iter()
@@ -649,7 +645,10 @@ impl TaskOrchestrator {
         let mut expired_seqs = Vec::new();
         let mut replay = Vec::new();
         // Range over (last_sequence_seen, +inf) — strictly greater.
-        for (&seq, entry) in self.buffered_by_seq.range((std::ops::Bound::Excluded(last_sequence_seen), std::ops::Bound::Unbounded)) {
+        for (&seq, entry) in self.buffered_by_seq.range((
+            std::ops::Bound::Excluded(last_sequence_seen),
+            std::ops::Bound::Unbounded,
+        )) {
             let age_ms = u64::try_from(now.duration_since(entry.buffered_at).as_millis())
                 .unwrap_or(u64::MAX);
             if age_ms > RESUME_BUFFER_TTL_MS {
@@ -757,7 +756,11 @@ mod tests {
         let mut orchestrator = TaskOrchestrator::new();
         let task_id = Uuid::new_v4();
         let ack = orchestrator
-            .admit(sample_request(task_id, "Set a reminder"), Some("mock"), 1_000)
+            .admit(
+                sample_request(task_id, "Set a reminder"),
+                Some("mock"),
+                1_000,
+            )
             .expect("valid task is admitted");
         assert_eq!(ack.task_id, task_id);
         assert_eq!(ack.status, TaskStatus::Queued);
@@ -1055,7 +1058,10 @@ mod tests {
         let confidence = orchestrator
             .link_confidence(task_id, evidence_id)
             .expect("link exists");
-        assert!((confidence - 0.85).abs() < 1e-6, "should return the strongest link");
+        assert!(
+            (confidence - 0.85).abs() < 1e-6,
+            "should return the strongest link"
+        );
     }
 
     #[test]
@@ -1129,9 +1135,18 @@ mod tests {
         let outcomes = orchestrator.complete_tasks_for_generation(generation_id);
         assert_eq!(outcomes.len(), 1);
         let summary = &outcomes[0].summary;
-        assert!(summary.contains("Set a reminder for 3pm"), "summary should cite intent: {summary}");
-        assert!(summary.contains("1 evidence"), "summary should cite evidence count: {summary}");
-        assert!(summary.contains("transcript"), "summary should cite evidence kind: {summary}");
+        assert!(
+            summary.contains("Set a reminder for 3pm"),
+            "summary should cite intent: {summary}"
+        );
+        assert!(
+            summary.contains("1 evidence"),
+            "summary should cite evidence count: {summary}"
+        );
+        assert!(
+            summary.contains("transcript"),
+            "summary should cite evidence kind: {summary}"
+        );
         assert_eq!(outcomes[0].evidence_ids, vec![evidence_id]);
     }
 
@@ -1145,9 +1160,18 @@ mod tests {
         let outcomes = orchestrator.expire_deadlines(3_000);
         assert_eq!(outcomes.len(), 1);
         let summary = &outcomes[0].summary;
-        assert!(summary.contains("Slow reminder"), "summary should cite intent: {summary}");
-        assert!(summary.contains("timed out"), "summary should cite timeout: {summary}");
+        assert!(
+            summary.contains("Slow reminder"),
+            "summary should cite intent: {summary}"
+        );
+        assert!(
+            summary.contains("timed out"),
+            "summary should cite timeout: {summary}"
+        );
         let detail = outcomes[0].error_detail.as_deref().unwrap_or("");
-        assert!(detail.contains("3000"), "detail should cite deadline: {detail}");
+        assert!(
+            detail.contains("3000"),
+            "detail should cite deadline: {detail}"
+        );
     }
 }

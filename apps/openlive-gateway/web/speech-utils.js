@@ -1,5 +1,5 @@
 /**
- * OpenLive 26.7.15 — speech text utilities (filler stripping, task-intent).
+ * OpenLive 26.7.16 — speech text utilities (filler stripping, task-intent).
  */
 
 const FILLERS = [

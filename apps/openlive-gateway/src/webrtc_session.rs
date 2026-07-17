@@ -1,16 +1,16 @@
 //! Bridge a gateway-native WebRTC peer onto a provider session with endpointing.
 //!
-//! Control JSON on `openlive-events` uses EventEnvelope (same as WebSocket).
-//! Binary on `openlive-media` carries MediaPacket frames (or raw PCM16).
+//! Control JSON on `openlive-events` uses `EventEnvelope` (same as WebSocket).
+//! Binary on `openlive-media` carries `MediaPacket` frames (or raw PCM16).
 
 use std::sync::Arc;
 
 use openlive_audio::{AcousticFrontend, AudioAnalysis, EndpointingTracker};
 use openlive_protocol::{
     CapabilitySelected, EventEnvelope, InteractionAction, InteractionDecision, MediaKind,
-    MediaPacket, MediaTransport, Modality, Observation, OutputAudioPlayed, ProviderLifecycleState,
-    ProviderManifest, RealtimeEvent, SessionCreated, SessionConfigured, UserTranscriptDelta,
-    VisualInputMode, PROTOCOL_REVISION, PROTOCOL_VERSION,
+    MediaPacket, MediaTransport, Modality, Observation, ProviderLifecycleState, ProviderManifest,
+    RealtimeEvent, SessionConfigured, SessionCreated, UserTranscriptDelta, VisualInputMode,
+    PROTOCOL_REVISION, PROTOCOL_VERSION,
 };
 use openlive_provider::{
     ProviderEmission, ProviderInput, ProviderOutput, ProviderSessionRequest, RealtimeProvider,
@@ -34,6 +34,7 @@ struct BridgeState {
 }
 
 /// Run until the peer closes.
+#[allow(clippy::too_many_lines)]
 pub async fn run_webrtc_peer(mut peer: WebRtcPeerSession, provider: Arc<dyn RealtimeProvider>) {
     let session_id = peer.id;
     info!(%session_id, "webrtc provider bridge starting");
@@ -52,7 +53,11 @@ pub async fn run_webrtc_peer(mut peer: WebRtcPeerSession, provider: Arc<dyn Real
     let (provider_in, mut provider_out) = provider_session.into_parts();
     let manifest = provider.manifest();
     let input_rate = *manifest.audio.input_sample_rates.first().unwrap_or(&16_000);
-    let output_rate = *manifest.audio.output_sample_rates.first().unwrap_or(&24_000);
+    let output_rate = *manifest
+        .audio
+        .output_sample_rates
+        .first()
+        .unwrap_or(&24_000);
 
     let mut state = BridgeState {
         session_id,
@@ -170,9 +175,7 @@ async fn handle_inbound_control(
             Some("cancel") => {
                 if let Some(gid) = state.active_generation.take() {
                     let _ = provider_in
-                        .send(ProviderInput::CancelGeneration {
-                            generation_id: gid,
-                        })
+                        .send(ProviderInput::CancelGeneration { generation_id: gid })
                         .await;
                 }
                 return;
@@ -194,17 +197,6 @@ async fn handle_inbound_control(
     state.media_time_us = state.media_time_us.max(envelope.media_time_us);
 
     match envelope.event {
-        RealtimeEvent::SessionConfigured(SessionConfigured { .. }) => {
-            let _ = send_event(
-                peer,
-                state,
-                "session",
-                envelope.media_time_us,
-                RealtimeEvent::Pong,
-                None,
-            )
-            .await;
-        }
         RealtimeEvent::UserTranscriptDelta(UserTranscriptDelta { text, is_final }) => {
             state.last_user_text = text.clone();
             state.latest_semantic = Some(semantic_score(&text));
@@ -232,8 +224,7 @@ async fn handle_inbound_control(
             )
             .await;
         }
-        RealtimeEvent::OutputAudioPlayed(OutputAudioPlayed { .. }) => {}
-        RealtimeEvent::Ping => {
+        RealtimeEvent::SessionConfigured(SessionConfigured { .. }) | RealtimeEvent::Ping => {
             let _ = send_event(
                 peer,
                 state,
@@ -400,7 +391,6 @@ async fn send_event(
 fn stream_for(event: &RealtimeEvent) -> &'static str {
     match event {
         RealtimeEvent::OutputTextDelta(_) | RealtimeEvent::OutputTextFinal(_) => "assistant_text",
-        RealtimeEvent::ProviderState(_) => "provider",
         RealtimeEvent::TaskCreated(_) | RealtimeEvent::TaskResult(_) => "cognition",
         RealtimeEvent::VisualCard(_) => "visual",
         RealtimeEvent::Observation(_) => "endpointing",
@@ -409,6 +399,7 @@ fn stream_for(event: &RealtimeEvent) -> &'static str {
     }
 }
 
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 fn semantic_score(text: &str) -> f32 {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -418,7 +409,7 @@ fn semantic_score(text: &str) -> f32 {
         return 0.95;
     }
     let words = trimmed.split_whitespace().count();
-    (words as f32 / 6.0).clamp(0.2, 0.85)
+    (words as f64 / 6.0).clamp(0.2, 0.85) as f32
 }
 
 #[cfg(test)]

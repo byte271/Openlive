@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#000000" />
-    <meta name="description" content="OpenLive 26.7.15 — smooth full-duplex voice with background agents." />
+    <meta name="description" content="OpenLive 26.7.16 — smooth full-duplex voice with background agents." />
     <title>OpenLive</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,7 +12,19 @@
     <link rel="stylesheet" href="/styles.css" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='8' fill='%236b8cff'/%3E%3C/svg%3E" />
   </head>
-  <body data-mode="idle" data-layout="focused" data-workspace="live" data-ui="minimal">
+  <body data-mode="idle" data-layout="focused" data-workspace="live" data-ui="minimal" data-boot="loading">
+    <!-- Boot / splash screen — white sphere + sliding brand -->
+    <div id="bootSplash" class="boot-splash" aria-hidden="false">
+      <div class="boot-splash-inner">
+        <div class="boot-sphere-wrap" aria-hidden="true">
+          <div class="boot-sphere"></div>
+          <div class="boot-sphere-glow"></div>
+        </div>
+        <span class="boot-brand" id="bootBrand">Openlive</span>
+        <span class="boot-status" id="bootStatus">Initializing…</span>
+      </div>
+    </div>
+
     <!-- Icons use explicit stroke attrs so <use> works (CSS does not pierce use shadow trees). -->
     <svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true">
       <defs>
@@ -49,22 +61,38 @@
     <!-- First-run setup wizard -->
     <div id="setupWizard" class="setup-wizard" data-open="true" hidden>
       <div class="setup-card">
+        <div class="setup-hero" aria-hidden="true">
+          <div class="setup-hero-orb"></div>
+          <div class="setup-hero-glow"></div>
+        </div>
         <header class="setup-head">
-          <span class="setup-eyebrow">OpenLive 26.7.15</span>
-          <h1>Get ready to talk</h1>
-          <p>Configure voice, model access, and a background agent. You can change these later in Settings.</p>
+          <span class="setup-eyebrow">OpenLive 26.7.16</span>
+          <h1 id="setupTitle">Get ready to talk</h1>
+          <p id="setupSubtitle">Configure voice, model access, and a background agent. You can change these later in Settings.</p>
         </header>
-        <div class="setup-steps" role="tablist">
+        <div class="setup-steps" role="tablist" id="setupSteps">
           <button type="button" class="setup-step active" data-step="0">1 · Voice</button>
           <button type="button" class="setup-step" data-step="1">2 · Model</button>
           <button type="button" class="setup-step" data-step="2">3 · Agent</button>
         </div>
         <div class="setup-panels">
-          <section class="setup-panel active" data-panel="0">
+          <!-- Welcome panel -->
+          <section class="setup-panel welcome-panel active" data-panel="welcome">
+            <div class="welcome-content">
+              <h2 class="welcome-title">Welcome</h2>
+              <p class="welcome-subtitle">Let's get you set up so you can start talking.</p>
+            </div>
+          </section>
+          <!-- Voice selection panel -->
+          <section class="setup-panel voice-panel" data-panel="voice" hidden>
             <label for="setupDisplayName">Your name <span class="optional">(optional)</span></label>
             <input id="setupDisplayName" type="text" placeholder="Alex" autocomplete="name" />
             <label for="setupVoice">Voice profile</label>
-            <select id="setupVoice"></select>
+            <select id="setupVoice" hidden></select>
+            <div id="setupVoiceSwipe" class="voice-swipe-container" role="listbox" aria-label="Voice profile selection" tabindex="0">
+              <!-- Voice cards injected by JS -->
+            </div>
+            <div class="voice-dots" id="voiceDots" aria-hidden="true"></div>
             <label class="checkbox-row" for="setupStripFillers"><input id="setupStripFillers" type="checkbox" checked /><span>Clean fillers (um, uh, hmm) before agent tasks</span></label>
             <label class="checkbox-row" for="setupBackchannels"><input id="setupBackchannels" type="checkbox" checked /><span>Natural listener cues (mhmm) during speech</span></label>
           </section>
@@ -98,19 +126,22 @@
             <p class="setup-hint">Agent tools run on this gateway (web search, time, calculator). No OpenCode.</p>
           </section>
         </div>
-        <footer class="setup-foot">
+        <footer class="setup-foot" id="setupFoot">
           <button id="setupBack" class="ghost-button" type="button" hidden>Back</button>
-          <button id="setupNext" class="primary-control setup-primary" type="button">Continue</button>
+          <button id="setupNext" class="primary-control setup-primary welcome-next" type="button">Next</button>
         </footer>
       </div>
     </div>
 
     <div class="ambient" aria-hidden="true"></div>
+    <button id="exitFullscreen" class="exit-fullscreen" type="button" aria-label="Exit full-screen" title="Exit full-screen (F)">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-close" /></svg>
+    </button>
 
     <header class="topbar minimal-topbar">
       <button id="brand" class="brand minimal-brand" type="button" aria-label="OpenLive menu">
         <span class="brand-name">OpenLive</span>
-        <small class="brand-version">26.7.15</small>
+        <small class="brand-version">26.7.16</small>
       </button>
       <nav class="top-actions" aria-label="Session controls">
         <div id="latencyPill" class="latency-pill" hidden aria-live="polite"><span class="latency-dot"></span><span id="latencyValue">— ms</span></div>
@@ -263,7 +294,7 @@
         <section class="context-section evidence-section">
           <header class="context-head"><div><span class="eyebrow">Evidence</span><h2>Ledger</h2></div><button id="evidenceExpand" class="mini-action" type="button">Inspect</button></header>
           <ol id="evidenceFeed" class="evidence-feed">
-            <li><i class="cyan"></i><div><strong>Runtime ready</strong><p>OpenLive 26.7.15</p><time>now</time></div></li>
+            <li><i class="cyan"></i><div><strong>Runtime ready</strong><p>OpenLive 26.7.16</p><time>now</time></div></li>
           </ol>
           <button id="exportEvidence" class="evidence-export" type="button"><span>Export evidence</span></button>
         </section>
@@ -272,7 +303,7 @@
     </div>
 
     <section id="benchWorkspace" class="bench-workspace" hidden>
-      <header class="bench-hero"><div><span class="eyebrow">26.7.15</span><h1>LiveBench</h1></div><div class="bench-score"><strong>—</strong></div></header>
+      <header class="bench-hero"><div><span class="eyebrow">26.7.16</span><h1>LiveBench</h1></div><div class="bench-score"><strong>—</strong></div></header>
       <div class="bench-grid"></div>
       <section class="scenario-table"><header><button id="runBenchDemo" class="primary-small" type="button">Run demo</button></header><div id="scenarioMatrix"></div></section>
     </section>
@@ -535,6 +566,10 @@
                 <option value="signal">High contrast</option>
               </select>
             </label>
+            <label class="settings-row settings-toggle" for="fullscreenToggle">
+              <span class="settings-row-label">Full-screen mode</span>
+              <input id="fullscreenToggle" type="checkbox" />
+            </label>
             <div class="settings-row settings-row-stack">
               <div class="settings-row-top">
                 <span class="settings-row-label">Motion</span>
@@ -589,7 +624,33 @@
       <ol id="timeline" class="timeline"></ol>
     </aside>
 
-    <div id="onboarding" class="onboarding" data-open="false" hidden aria-hidden="true"></div>
+    <div id="onboarding" class="onboarding" data-open="false" hidden aria-hidden="true">
+      <div class="onboarding-card">
+        <span class="onboarding-eyebrow">Keyboard shortcuts</span>
+        <h2>OpenLive quick reference</h2>
+        <p>These shortcuts work anywhere in the app — tap <kbd>?</kbd> to open this sheet again.</p>
+        <ul class="onboarding-bullets">
+          <li><kbd>Space</kbd> <span>Start conversation · Hold to talk (PTT) · Toggle mute</span></li>
+          <li><kbd>M</kbd> <span>Toggle microphone mute</span></li>
+          <li><kbd>Esc</kbd> <span>Close overlays · End conversation</span></li>
+          <li><kbd>T</kbd> <span>Toggle transcript drawer</span></li>
+          <li><kbd>D</kbd> <span>Toggle diagnostics drawer</span></li>
+          <li><kbd>S</kbd> <span>Toggle settings sheet</span></li>
+          <li><kbd>I</kbd> <span>Speaking style inline panel</span></li>
+          <li><kbd>V</kbd> <span>Open voice picker</span></li>
+          <li><kbd>N</kbd> <span>Cycle conversation mode</span></li>
+          <li><kbd>L</kbd> <span>Toggle focused / inline layout</span></li>
+          <li><kbd>F</kbd> <span>Toggle full-screen mode</span></li>
+          <li><kbd>C</kbd> <span>Toggle camera input</span></li>
+          <li><kbd>Shift+C</kbd> <span>Toggle screen share</span></li>
+          <li><kbd>?</kbd> <span>Show this cheat sheet</span></li>
+        </ul>
+        <div class="onboarding-actions">
+          <button id="onboardingDismiss" class="ghost-button" type="button">Don't show again</button>
+          <button id="onboardingStart" class="primary-control onboarding-start-btn" type="button">Got it</button>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="/app.js"></script>
   </body>

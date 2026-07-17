@@ -3,8 +3,8 @@ use std::{env, net::SocketAddr, path::PathBuf, sync::Arc};
 use clap::{Parser, ValueEnum};
 use openlive_provider::{
     HybridStreamingProvider, LlmBridge, MockDuplexProvider, MoshiConfig, MoshiProvider,
-    OpenAiCompatibleConfig, OpenAiCompatibleProvider, OpenAiRealtimeConfig,
-    OpenAiRealtimeProvider, RealtimeProvider,
+    OpenAiCompatibleConfig, OpenAiCompatibleProvider, OpenAiRealtimeConfig, OpenAiRealtimeProvider,
+    RealtimeProvider,
 };
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -28,8 +28,8 @@ pub(crate) struct Args {
     pub web_dir: PathBuf,
     #[arg(long, value_enum, default_value_t = ProviderKind::Mock)]
     provider: ProviderKind,
-    /// OpenAI-compatible base URL (ASR + chat + TTS). Point at LocalAI,
-    /// openedai-speech, or any cascade that speaks the OpenAI REST shape.
+    /// OpenAI-compatible base URL (ASR + chat + TTS). Point at `LocalAI`,
+    /// openedai-speech, or any cascade that speaks the `OpenAI` REST shape.
     #[arg(long, default_value = "http://127.0.0.1:8000/v1")]
     model_base_url: String,
     #[arg(long, default_value = "whisper-1")]
@@ -39,7 +39,7 @@ pub(crate) struct Args {
     #[arg(long, default_value = "tts-1")]
     tts_model: String,
     /// Preferred TTS voice id. Default is a Piper open voice id used by
-    /// openedai-speech / LocalAI; use `alloy` for hosted OpenAI-compatible APIs.
+    /// openedai-speech / `LocalAI`; use `alloy` for hosted OpenAI-compatible APIs.
     #[arg(long, default_value = "en_US-lessac-medium")]
     voice: String,
     #[arg(long, default_value = "wss://api.openai.com/v1/realtime")]
@@ -96,6 +96,7 @@ impl Args {
     ///
     /// Returns an error when a provider configuration or client cannot be
     /// initialized.
+    #[allow(clippy::type_complexity)]
     pub(crate) fn build_provider(
         &self,
         llm: Option<Arc<LlmBridge>>,

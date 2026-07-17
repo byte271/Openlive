@@ -1,6 +1,11 @@
-# Runtime architecture (v26.7.15)
+# Runtime architecture (v26.7.16)
 
-Living companion: [`architecture-roadmap.md`](architecture-roadmap.md) · Release: [`release-26.7.15.md`](release-26.7.15.md)
+Living companion: [`architecture-roadmap.md`](architecture-roadmap.md) · Release: [`release-26.7.16.md`](release-26.7.16.md)
+
+v26.7.16 adds a Tauri v2 desktop shell (`apps/openlive-desktop`), a built-in
+LLM provider catalog, full-screen voice mode, a boot splash, and a coordinated
+WebRTC → WebSocket fallback path. The sections below describe the runtime
+architecture that underlies those features.
 
 ## Two-plane model
 

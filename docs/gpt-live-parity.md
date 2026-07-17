@@ -1,30 +1,30 @@
-# Openlive vs. GPT-Live — Parity Matrix (26.7.15)
+# Openlive vs. GPT-Live — Parity Matrix (26.7.16)
 
 **Scope:** This document is the authoritative answer to "is Openlive a
 clone of gpt-live?" It maps every user-visible GPT-Live / ChatGPT
-Advanced Voice Mode (AVM) feature to Openlive's **26.7.15** status, and
+Advanced Voice Mode (AVM) feature to Openlive's **26.7.16** status, and
 labels each row as **CLONE** (matched), **DIFFERENT** (deliberately
 divergent), or **GAP** (still missing).
 
 The companion document [`docs/gpt-live-benchmark.md`](gpt-live-benchmark.md)
 contains the underlying research and the v1.1 → v1.2 → v1.3 → v2.0.0 →
-26.7.14 → 26.7.14.1 → **26.7.15** trajectory.
+26.7.14 → 26.7.14.1 → **26.7.16** trajectory.
 
 ---
 
 ## Parity summary
 
 - **CLONE: 27 features** — Openlive matches gpt-live's user-visible behavior
-  (26.7.15 adds semantic VAD hybrid, real tools, multi-agent research).
+  (26.7.16 adds semantic VAD hybrid, real tools, multi-agent research).
 - **DIFFERENT: 8+ features** — deliberate divergences, partial WebRTC, partial
   live translation, open-model deep cognition, original agent workspace.
 - **GAP: 1 feature** — SIP/telephony (out of scope). Transcript editing remains a soft gap.
 
 ---
 
-## What 26.7.15 closes
+## What 26.7.16 closes
 
-**26.7.15** is the Live Presence + open voice + **agent workspace** release:
+**26.7.16** is the Live Presence + open voice + **agent workspace** + **desktop shell** release:
 
 1. **Open neural voice** — Piper-first TTS (`/v1/tts/*`), formant fallback, open-stack docs.
 2. **Client audio intelligence** — RNNoise-style NS, Silero-style VAD, NLMS AEC, FIR resample.
@@ -34,6 +34,9 @@ contains the underlying research and the v1.1 → v1.2 → v1.3 → v2.0.0 →
 6. **Multi-agent pool** — ≤50 workers, SSE progress, agent classes, deep research path.
 7. **Durable profile + memory** — facts editor, session ring, “what do you know about me”.
 8. **Developer surface** — meta/health, MCP client, safety holdback, session persistence.
+9. **Voice-output stability** — gateway PCM enqueue restored, robust TTS fallback chain (Piper → formant → browser), graceful failure handling.
+10. **Full-screen mode** — immersive voice stage with hidden chrome, hover-to-reveal controls.
+11. **Desktop applications** — Tauri-based Windows (MSI) and macOS (DMG/App) shells.
 
 ### Historical: What 26.7.14.1 closed
 
@@ -52,7 +55,7 @@ version-string alignment only. Substantive work in 26.7.14:
 
 Legend: ✅ CLONE · 🟡 DIFFERENT · ❌ GAP
 
-| # | Feature | GPT-Live / AVM behavior | Openlive 26.7.15 status | Category |
+| # | Feature | GPT-Live / AVM behavior | Openlive 26.7.16 status | Category |
 |---|---------|-------------------------|------------------------|----------|
 | 1 | Signature voice orb | Blue animated orb, state-driven | Multi-layer procedural orb with refined blue palette | ✅ CLONE (original visual) |
 | 2 | State-driven orb color | Blue / cyan / violet / red shifts | 11 named modes, each with its own palette | ✅ CLONE |
@@ -73,7 +76,7 @@ Legend: ✅ CLONE · 🟡 DIFFERENT · ❌ GAP
 | 17 | Latency display | Not surfaced in AVM UI | Latency pill + diagnostics p50/p95/jitter/loss | 🟡 DIFFERENT (Openlive exposes it) |
 | 18 | Live translation | Built-in GPT-Live feature | VisualCard + language chip instructions; cascade hop for production | 🟡 DIFFERENT (partial) |
 | 19 | Rich visual cards | Weather, stock, maps, sports | 7 card templates + generic fallback | ✅ CLONE (UI; provider must emit) |
-| 20 | Function calling / tools | `tools` array; function_call deltas | Tool-call cards + **real agent tools** (search, calc, sandbox, browse, profile) | ✅ CLONE (26.7.15 backend) |
+| 20 | Function calling / tools | `tools` array; function_call deltas | Tool-call cards + **real agent tools** (search, calc, sandbox, browse, profile) | ✅ CLONE (26.7.16 backend) |
 | 21 | Remote MCP server tools | `tools: [{ type: "mcp" }]` GA | MCP HTTP client + tool-call UI | ✅ CLONE (adapter present) |
 | 22 | Slow-thinking / GPT-5.5 delegation | GPT-Live delegates complex reasoning | `--deep-llm-model` + heuristic; multi-agent **research_pool** / deep thought depth | 🟡 DIFFERENT (open models + pool) |
 | 23 | Transcript editing | Editable after turn in AVM | Transcript is read-only | ❌ GAP (tracked) |
@@ -97,8 +100,11 @@ Legend: ✅ CLONE · 🟡 DIFFERENT · ❌ GAP
 | 41 | Task acknowledgement lifecycle | (Not in AVM) | Full lifecycle; p50 = 2 ms | 🟡 DIFFERENT (Openlive original) |
 | 42 | Evidence linking | (Not in AVM) | Bidirectional evidence_link events | 🟡 DIFFERENT (Openlive original) |
 | 43 | Resume with dedup | AVM rebuilds from items | `session_resume` + event_id dedup + BTreeMap replay | 🟡 DIFFERENT (Openlive beats AVM) |
-| 44 | Multi-agent research pool | Limited in AVM | Pool ≤50, SSE progress, agent classes, sandbox workspace | 🟡 DIFFERENT (Openlive original; 26.7.15) |
-| 45 | Durable user profile / memory | Account memory | Profile facts API + memory export + agent remember tools | 🟡 DIFFERENT (Openlive original; 26.7.15) |
+| 44 | Multi-agent research pool | Limited in AVM | Pool ≤50, SSE progress, agent classes, sandbox workspace | 🟡 DIFFERENT (Openlive original; 26.7.16) |
+| 45 | Durable user profile / memory | Account memory | Profile facts API + memory export + agent remember tools | 🟡 DIFFERENT (Openlive original; 26.7.16) |
+| 46 | Full-screen voice mode | Not in AVM | Settings toggle + keyboard shortcut; immersive orb stage | 🟡 DIFFERENT (Openlive original; 26.7.16) |
+| 47 | Desktop applications (Windows/macOS) | Web-only / PWA | Tauri-based native shells: MSI + DMG/App | 🟡 DIFFERENT (Openlive original; 26.7.16) |
+| 48 | Robust TTS fallback | Cloud TTS only | Piper → formant → browser with graceful degradation | 🟡 DIFFERENT (Openlive beats AVM) |
 
 ---
 
@@ -124,7 +130,7 @@ enforce p50 ≤ 50 ms and p95 ≤ 200 ms.
 
 ## What "open-source clone" means here
 
-Openlive 26.7.15 is a **behavioral clone** of gpt-live's voice surface,
+Openlive 26.7.16 is a **behavioral clone** of gpt-live's voice surface,
 not a **visual clone**. The orb, palettes, copy, layout, and animation
 are original Openlive geometry — they do not reproduce any proprietary
 interface or its assets.
@@ -157,8 +163,10 @@ is partial (VisualCard + language mode); semantic VAD is CLONE hybrid.
 
 ## Conclusion
 
-Openlive **26.7.15** is a credible open-source clone of gpt-live's voice
+Openlive **26.7.16** is a credible open-source clone of gpt-live's voice
 surface with additional open-stack voice, real tools, sandbox, multi-agent
-research, and durable profile/memory. The clone contract is met for
-26.7.15 scope on the voice surface; remaining work is transport polish,
+research, durable profile/memory, full-screen mode, native desktop shells for
+Windows and macOS, a built-in LLM provider catalog, coordinated WebRTC fallback,
+and a polished boot splash + micro-interaction layer. The clone contract is met
+for 26.7.16 scope on the voice surface; remaining work is transport polish,
 vendor weights, and transcript editing — not a rewrite of the live UI.

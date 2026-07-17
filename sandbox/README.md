@@ -1,8 +1,8 @@
-# OpenLive sandbox (v26.7.15)
+# OpenLive sandbox (v26.7.16)
 
 Isolated workspace for multi-agent tools. Paths are confined to the sandbox root
 (typically `%LOCALAPPDATA%\openlive\sandbox` on Windows). See
-`docs/architecture-roadmap.md` and `docs/release-26.7.15.md`.
+`docs/architecture-roadmap.md` and `docs/release-26.7.16.md`.
 
 ```
 sandbox/

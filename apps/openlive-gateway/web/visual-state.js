@@ -1,5 +1,5 @@
 /**
- * Openlive 26.7.15 — visual-state.js
+ * Openlive 26.7.16 — visual-state.js
  *
  * Central registry of voice surface modes, their presentation copy, their
  * acoustic energy weights, and helpers used by both the UI layer and the
