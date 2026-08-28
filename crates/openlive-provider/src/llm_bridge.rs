@@ -118,7 +118,9 @@ impl LlmBridge {
 
     #[must_use]
     pub fn settings(&self) -> LlmSettings {
-        self.settings.read().map(|g| g.clone()).unwrap_or_default()
+        self.settings
+            .read()
+            .map_or_else(|_| LlmSettings::default(), |g| g.clone())
     }
 
     pub fn update_settings(&self, partial: LlmSettings) {

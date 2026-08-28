@@ -362,8 +362,7 @@ async fn generate_mock_response(
 
     // Optional formant only when explicitly enabled (legacy demos).
     let emit_formant = std::env::var("OPENLIVE_EMIT_FORMANT")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
     if emit_formant && !cancellation.is_cancelled() {
         let char_count = response.chars().count().max(8);
         let total_ms = (char_count as u64 * 40).clamp(200, 1_500);
@@ -398,6 +397,7 @@ async fn generate_mock_response(
     let _ = (sample_rate, frame_duration_ms, voice_id);
 }
 
+#[allow(clippy::result_large_err)]
 async fn send(
     sender: &mpsc::Sender<ProviderEmission>,
     generation_id: uuid::Uuid,

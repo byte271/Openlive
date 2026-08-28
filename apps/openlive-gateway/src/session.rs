@@ -707,8 +707,7 @@ impl SessionCoordinator {
         let conversation_version = self
             .leases
             .active()
-            .map(|lease| lease.conversation_version)
-            .unwrap_or_default();
+            .map_or_else(Default::default, |lease| lease.conversation_version);
         self.engine.mark_response_started(generation_id);
         // Bind every pending (unbound) task to this generation. Tasks
         // admitted between turns now get attached to the upcoming

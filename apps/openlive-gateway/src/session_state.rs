@@ -781,7 +781,7 @@ mod tests {
         let first = orchestrator
             .admit(sample_request(task_id, "Remind me"), None, 0)
             .expect("first admit");
-        assert!(first.task_id == task_id);
+        assert_eq!(first.task_id, task_id);
         assert!(orchestrator
             .admit(sample_request(task_id, "Remind me again"), None, 0)
             .is_none());

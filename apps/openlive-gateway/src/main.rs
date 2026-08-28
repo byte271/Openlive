@@ -1288,7 +1288,7 @@ async fn sandbox_test_run(State(state): State<AppState>, headers: HeaderMap) -> 
     let read = sandbox_read_file(path);
     tests.push(serde_json::json!({
         "name": "sandbox_write_read",
-        "ok": write.is_ok() && read.as_ref().map(|t| t.contains("openlive-ok")).unwrap_or(false),
+        "ok": write.is_ok() && read.as_ref().is_ok_and(|t| t.contains("openlive-ok")),
         "detail": format!("{:?} / {:?}", write, read.as_ref().map(|s| s.chars().take(40).collect::<String>())),
     }));
     // 2. Calculator / identity via agent
@@ -1345,7 +1345,7 @@ async fn sandbox_test_run(State(state): State<AppState>, headers: HeaderMap) -> 
     let after = sandbox_read_file(cpath);
     tests.push(serde_json::json!({
         "name": "pending_confirm_write",
-        "ok": approved.is_ok() && after.as_ref().map(|t| t.contains("v2-approved")).unwrap_or(false),
+        "ok": approved.is_ok() && after.as_ref().is_ok_and(|t| t.contains("v2-approved")),
         "detail": format!("{:?} / {:?}", approved, after),
     }));
     // 5. Lab note + browse wiki summary
@@ -1361,7 +1361,7 @@ async fn sandbox_test_run(State(state): State<AppState>, headers: HeaderMap) -> 
         .await;
     tests.push(serde_json::json!({
         "name": "browse_wikipedia",
-        "ok": browse.as_ref().map(|(t, _)| t.to_ascii_lowercase().contains("agent")).unwrap_or(false),
+        "ok": browse.as_ref().is_ok_and(|(t, _)| t.to_ascii_lowercase().contains("agent")),
         "detail": browse.as_ref().map_or_else(std::clone::Clone::clone, |(t, c)| format!("{} @ {}", t.chars().take(80).collect::<String>(), c.url)),
     }));
     // 6. Durable profile
@@ -2000,20 +2000,19 @@ async fn session_transcript(
                             }));
                         }
                     }
-                    "user_transcript_delta" => {
+                    "user_transcript_delta"
                         if payload
                             .get("is_final")
                             .and_then(serde_json::Value::as_bool)
-                            .unwrap_or(false)
-                        {
-                            if let Some(text) = payload.get("text").and_then(|t| t.as_str()) {
-                                turns.push(serde_json::json!({
-                                    "role": "user",
-                                    "text": text,
-                                    "sequence": row.sequence,
-                                    "event_id": row.event_id,
-                                }));
-                            }
+                            .unwrap_or(false) =>
+                    {
+                        if let Some(text) = payload.get("text").and_then(|t| t.as_str()) {
+                            turns.push(serde_json::json!({
+                                "role": "user",
+                                "text": text,
+                                "sequence": row.sequence,
+                                "event_id": row.event_id,
+                            }));
                         }
                     }
                     _ => {}
@@ -2390,6 +2389,5 @@ fn feature_flags(state: &AppState) -> serde_json::Value {
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
-        .unwrap_or(0)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }

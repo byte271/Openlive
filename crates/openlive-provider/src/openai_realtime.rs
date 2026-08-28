@@ -236,6 +236,7 @@ async fn run_realtime_session<S>(
     let _ = websocket_sender.close().await;
 }
 
+#[allow(clippy::result_large_err)]
 async fn handle_input<S>(
     input: ProviderInput,
     active: &mut Option<ActiveResponse>,
@@ -460,6 +461,7 @@ async fn emit_provider_error(
     .await;
 }
 
+#[allow(clippy::result_large_err)]
 async fn emit(
     sender: &mpsc::Sender<ProviderEmission>,
     response: &ActiveResponse,
@@ -494,6 +496,7 @@ async fn send_error(
         .await;
 }
 
+#[allow(clippy::result_large_err)]
 async fn send_json<S>(sender: &mut S, value: &Value) -> Result<(), WebSocketError>
 where
     S: Sink<Message, Error = WebSocketError> + Unpin,

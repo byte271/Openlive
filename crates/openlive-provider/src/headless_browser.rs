@@ -230,8 +230,7 @@ fn safe_shot_name(url: &str) -> String {
         .collect();
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_secs());
     format!("{host}-{ts}.png")
 }
 
@@ -342,8 +341,7 @@ fn safe_pdf_name(url: &str) -> String {
         .collect();
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_secs());
     format!("{host}-{ts}.pdf")
 }
 
@@ -478,7 +476,7 @@ pub fn list_lab_media(limit: usize) -> Vec<LabMediaItem> {
             }
         }
     }
-    items.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms));
+    items.sort_by_key(|a| std::cmp::Reverse(a.modified_ms));
     items.truncate(limit);
     items
 }
