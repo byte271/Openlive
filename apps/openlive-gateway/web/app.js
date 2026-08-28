@@ -93,6 +93,7 @@ import {
   isRealTtsReady,
 } from "./demo-voice.js";
 import { installCallMorphs } from "./call-controls.js";
+import { isGestureGatedMicError, shouldAutoJoinCall } from "./call-entry.js";
 import {
   BACKCHANNEL_TOKENS,
   identityReply,
@@ -182,6 +183,7 @@ let transcriptVisible = false;
 let lastServerSequence = 0;
 let reconnectAttempt = 0;
 let conversationActive = false;
+let joining = false;
 let microphoneActive = false;
 let userEnded = true;
 let pttHeld = false;
@@ -535,7 +537,7 @@ controls.debug?.addEventListener("click", () => {
 });
 controls.brand?.addEventListener("click", () => {
   playClick("soft");
-  toggleDiagnostics();
+  setCallSettingsOpen();
 });
 controls.closeDebug?.addEventListener("click", () => {
   playClick("soft");
@@ -606,13 +608,34 @@ controls.composerInput?.addEventListener("keydown", (event) => {
   playClick("confirm");
   void submitComposerText();
 });
-// Prime Web Audio on first pointer anywhere in the surface.
+// Prime Web Audio on first pointer. If auto-join was gesture-gated,
+// the same tap starts the call — GPT-Live is a call, not a Start button.
+// Prime Web Audio on first pointer. Empty-stage taps start the call;
+// chrome (Mute / End / Settings) keeps its own handlers.
 document.addEventListener(
   "pointerdown",
-  () => {
+  (event) => {
     unlockUiAudio();
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (
+      target.closest(
+        "button, a, input, select, textarea, .sheet, .setup-wizard, .diagnostics, .onboarding",
+      )
+    ) {
+      return;
+    }
+    if (
+      shouldAutoJoinCall({
+        conversationActive,
+        joining,
+        setupOpen: isInteractionBlocked(),
+      })
+    ) {
+      void beginConversation();
+    }
   },
-  { once: true, passive: true },
+  { passive: true },
 );
 wireUiSoundToggle();
 
@@ -694,8 +717,8 @@ applySettingsForm();
 applySetupToSettingsForm();
 applySessionCapFromSettings();
 refreshFullscreenToggle();
-visualizer.setMode(VoiceMode.IDLE);
-resetExperience();
+visualizer.setMode(VoiceMode.LISTENING);
+setVoiceMode(VoiceMode.LISTENING);
 renderVoiceList(voices, selectedVoice.id, onVoiceSelected);
 renderModeList(MODES, selectedModeId, onModeSelected);
 setVoiceBadge(selectedVoice.glyph);
@@ -707,15 +730,11 @@ refreshInstructionsBadge();
 // shows pending tasks without waiting for a new acknowledgement.
 initializeTaskRail();
 
-// Load LLM provider catalog + sync gateway config (non-blocking).
-void bootstrapLlmUi().then(() => {
-  // Dismiss the boot splash once the provider catalog is loaded.
-  dismissBootSplash();
-});
-// Paint Settings → Runtime as soon as the page loads (don't wait for Start).
+// First paint is the call. Do not wait on catalog fetch or a brand animation.
+dismissBootSplash();
+void bootstrapLlmUi();
 void refreshRuntimeStatus();
 
-// First paint is the call surface — do not force the setup wizard.
 setSetupOpen(false);
 void pushLlmConfig(setup).catch(() => {});
 void refreshTtsWarmup();
@@ -723,12 +742,19 @@ window.setInterval(() => {
   void refreshTtsWarmup();
 }, 4000);
 
-// Failsafe: dismiss splash after 3s even if bootstrapLlmUi hangs.
-setTimeout(dismissBootSplash, 3000);
-
 // Install ripple click feedback on all interactive elements.
 installRippleFeedback();
 callMorphs = installCallMorphs();
+
+if (
+  shouldAutoJoinCall({
+    conversationActive,
+    joining,
+    setupOpen: false,
+  })
+) {
+  void beginConversation({ auto: true });
+}
 
 /* ---------------------------------------------------------------------------
    Primary action / conversation lifecycle
@@ -781,6 +807,7 @@ function handlePttEnd() {
 }
 
 async function handlePrimaryAction() {
+  if (joining) return;
   if (isInteractionBlocked()) {
     showSetupRequiredNotice();
     return;
@@ -817,7 +844,13 @@ function handleMuteToggle() {
   }).catch((error) => showNotice(microphoneErrorMessage(error)));
 }
 
-async function beginConversation() {
+async function beginConversation({ auto = false } = {}) {
+  if (conversationActive || joining) return;
+  if (isInteractionBlocked()) {
+    if (!auto) showSetupRequiredNotice();
+    return;
+  }
+  joining = true;
   userEnded = false;
   reconnectAttempt = 0;
   mediaTimeUs = 0;
@@ -833,8 +866,10 @@ async function beginConversation() {
   setAssistantText("");
   closeOverlays();
   hideNotice();
-  setStarting(true);
-  transition(VoiceMode.STARTING);
+  if (!auto) {
+    setStarting(true);
+    transition(VoiceMode.STARTING);
+  }
   try {
     setup = loadSetup();
     await pushLlmConfig(setup).catch(() => {});
@@ -892,10 +927,16 @@ async function beginConversation() {
     microphoneActive = false;
     conversationActive = false;
     setConversationActive(false);
-    showNotice(microphoneErrorMessage(error));
-    transition(VoiceMode.ERROR);
-    addTimeline("start_error", error.message);
+    if (auto && isGestureGatedMicError(error)) {
+      // Browser needs a tap. Stay on the call surface; first pointer starts it.
+      transition(VoiceMode.IDLE);
+    } else {
+      showNotice(microphoneErrorMessage(error));
+      transition(VoiceMode.ERROR);
+      addTimeline("start_error", error.message);
+    }
   } finally {
+    joining = false;
     setStarting(false);
   }
 }
@@ -5091,45 +5132,22 @@ function microphoneErrorMessage(error) {
    --------------------------------------------------------------------------- */
 
 let bootSplashDismissed = false;
-window.__openliveBootStart = performance.now();
 
 /**
- * Fade out the boot/splash overlay and mark the app as ready.
- * Called after bootstrapLlmUi completes or a 3s failsafe timeout.
- */
-/**
- * Fade out the boot/splash overlay and mark the app shell as ready.
- * Boot sequence: white sphere scales in, then after 1s "Openlive" slides
- * out and fades before the splash is removed. The splash stays for at
- * least 2.4s so the brand animation can complete.
+ * Remove the boot overlay immediately. The call surface is first paint;
+ * do not hold it for a brand animation.
  */
 function dismissBootSplash() {
   if (bootSplashDismissed) return;
   bootSplashDismissed = true;
-
-  // Keep the splash visible long enough for the brand animation to play:
-  // 1s delay + 1.2s slide/fade = ~2.2s minimum. Add a small buffer.
-  const splashStart = window.__openliveBootStart || performance.now();
-  const elapsed = performance.now() - splashStart;
-  const minDuration = 2400;
-  const remaining = Math.max(0, minDuration - elapsed);
-
-  const doDismiss = () => {
-    const splash = document.getElementById("bootSplash");
-    if (splash) {
-      splash.classList.add("is-hidden");
-      setTimeout(() => {
-        if (splash.parentNode) splash.parentNode.removeChild(splash);
-      }, 900);
-    }
-    document.body.dataset.boot = "ready";
-  };
-
-  if (remaining <= 0) {
-    doDismiss();
-  } else {
-    setTimeout(doDismiss, remaining);
+  const splash = document.getElementById("bootSplash");
+  if (splash) {
+    splash.classList.add("is-hidden");
+    splash.setAttribute("hidden", "");
+    splash.setAttribute("aria-hidden", "true");
+    if (splash.parentNode) splash.parentNode.removeChild(splash);
   }
+  document.body.dataset.boot = "ready";
 }
 
 /**

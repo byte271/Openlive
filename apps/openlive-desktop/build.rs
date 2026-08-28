@@ -12,7 +12,9 @@ use std::path::PathBuf;
 
 fn main() {
     if std::env::var("OPENLIVE_SKIP_GATEWAY_BUILD").is_ok() {
-        eprintln!("[openlive-desktop/build] OPENLIVE_SKIP_GATEWAY_BUILD is set; skipping gateway staging.");
+        eprintln!(
+            "[openlive-desktop/build] OPENLIVE_SKIP_GATEWAY_BUILD is set; skipping gateway staging."
+        );
         tauri_build::build();
         return;
     }
@@ -56,7 +58,10 @@ fn main() {
     std::fs::create_dir_all(&dst_dir).expect("failed to create target/release");
     std::fs::copy(&src, &dst).expect("failed to stage gateway binary for bundling");
 
-    eprintln!("[openlive-desktop/build] Staged gateway for bundling: {}", dst.display());
+    eprintln!(
+        "[openlive-desktop/build] Staged gateway for bundling: {}",
+        dst.display()
+    );
 
     tauri_build::build();
 }

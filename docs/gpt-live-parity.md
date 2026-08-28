@@ -26,7 +26,7 @@ contains the underlying research and the v1.1 → v1.2 → v1.3 → v2.0.0 →
 
 **26.7.16** is the Live Presence + open voice + **agent workspace** + **desktop shell** release:
 
-1. **Open neural voice** — Piper-first TTS (`/v1/tts/*`), formant fallback, open-stack docs.
+1. **Open neural voice** — Piper-first TTS (`/v1/tts/*`); demo path is **neural or silence** (no formant pad). Formant only when explicitly chosen.
 2. **Client audio intelligence** — RNNoise-style NS, Silero-style VAD, NLMS AEC, FIR resample.
 3. **Semantic VAD hybrid** — transcript-aware completeness + ~200 ms early end.
 4. **Gateway-native WebRTC** — ICE/DTLS data channels for events + PCM; WS fallback with PLC/jitter.
@@ -34,8 +34,8 @@ contains the underlying research and the v1.1 → v1.2 → v1.3 → v2.0.0 →
 6. **Multi-agent pool** — ≤50 workers, SSE progress, agent classes, deep research path.
 7. **Durable profile + memory** — facts editor, session ring, “what do you know about me”.
 8. **Developer surface** — meta/health, MCP client, safety holdback, session persistence.
-9. **Voice-output stability** — gateway PCM enqueue restored, robust TTS fallback chain (Piper → formant → browser), graceful failure handling.
-10. **Full-screen mode** — immersive voice stage with hidden chrome, hover-to-reveal controls.
+9. **Voice-output stability** — gateway PCM enqueue restored; auto never falls through to formant/browser.
+10. **Call-first surface** — Bloub face + Mute / End / Settings; lab chrome lives in Settings.
 11. **Desktop applications** — Tauri-based Windows (MSI) and macOS (DMG/App) shells.
 
 ### Historical: What 26.7.14.1 closed
@@ -57,7 +57,7 @@ Legend: ✅ CLONE · 🟡 DIFFERENT · ❌ GAP
 
 | # | Feature | GPT-Live / AVM behavior | Openlive 26.7.16 status | Category |
 |---|---------|-------------------------|------------------------|----------|
-| 1 | Signature voice orb | Blue animated orb, state-driven | Multi-layer procedural orb with refined blue palette | ✅ CLONE (original visual) |
+| 1 | Signature voice orb | Blue animated orb, state-driven | Bloub face (x.ai-inspired, MIT, not affiliated) on a black call stage | ✅ CLONE (original visual) |
 | 2 | State-driven orb color | Blue / cyan / violet / red shifts | 11 named modes, each with its own palette | ✅ CLONE |
 | 3 | Live dual transcript | Inline user + assistant bubbles | Persistent scrolling transcript with role-differentiated bubbles + system channel | ✅ CLONE |
 | 4 | Inline-in-chat voice mode | Late-2025 redesign moved voice inline with chat | Layout toggle: focused vs inline | ✅ CLONE |
@@ -104,7 +104,7 @@ Legend: ✅ CLONE · 🟡 DIFFERENT · ❌ GAP
 | 45 | Durable user profile / memory | Account memory | Profile facts API + memory export + agent remember tools | 🟡 DIFFERENT (Openlive original; 26.7.16) |
 | 46 | Full-screen voice mode | Not in AVM | Settings toggle + keyboard shortcut; immersive orb stage | 🟡 DIFFERENT (Openlive original; 26.7.16) |
 | 47 | Desktop applications (Windows/macOS) | Web-only / PWA | Tauri-based native shells: MSI + DMG/App | 🟡 DIFFERENT (Openlive original; 26.7.16) |
-| 48 | Robust TTS fallback | Cloud TTS only | Piper → formant → browser with graceful degradation | 🟡 DIFFERENT (Openlive beats AVM) |
+| 48 | Robust TTS fallback | Cloud TTS only | Auto = Piper or silence (no formant pad). Formant/browser only when chosen. | 🟡 DIFFERENT |
 
 ---
 
@@ -165,8 +165,7 @@ is partial (VisualCard + language mode); semantic VAD is CLONE hybrid.
 
 Openlive **26.7.16** is a credible open-source clone of gpt-live's voice
 surface with additional open-stack voice, real tools, sandbox, multi-agent
-research, durable profile/memory, full-screen mode, native desktop shells for
-Windows and macOS, a built-in LLM provider catalog, coordinated WebRTC fallback,
-and a polished boot splash + micro-interaction layer. The clone contract is met
-for 26.7.16 scope on the voice surface; remaining work is transport polish,
-vendor weights, and transcript editing — not a rewrite of the live UI.
+research, durable profile/memory, full-screen mode, and native desktop shells.
+The **default path is a call**: listening orb, Mute / End / Settings, neural
+voice or silence — not an engineering console. Remaining work is transport
+polish, vendor weights, and transcript editing — not a rewrite of the live UI.

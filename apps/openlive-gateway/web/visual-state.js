@@ -28,9 +28,9 @@ export const VoiceMode = Object.freeze({
 
 const PRESENTATIONS = Object.freeze({
   idle: {
-    label: "Listening",
+    label: "Tap to talk",
     title: "OpenLive",
-    detail: "Speak freely.",
+    detail: "I'll listen as soon as you start.",
     tone: "neutral",
   },
   starting: {

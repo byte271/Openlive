@@ -253,8 +253,8 @@ test("jitter target expands on loss and recovers after stable playout", () => {
    --------------------------------------------------------------------------- */
 
 test("voice presentation keeps live states concise and distinct", () => {
-  assert.equal(voicePresentation(VoiceMode.IDLE).label, "Listening");
-  assert.equal(voicePresentation(VoiceMode.IDLE).detail, "Speak freely.");
+  assert.equal(voicePresentation(VoiceMode.IDLE).label, "Tap to talk");
+  assert.equal(voicePresentation(VoiceMode.IDLE).detail, "I'll listen as soon as you start.");
   assert.equal(voicePresentation(VoiceMode.LISTENING).label, "Listening");
   assert.equal(voicePresentation(VoiceMode.SPEAKING).label, "Speaking");
   assert.notEqual(
@@ -543,6 +543,7 @@ test("clearSettings is safe to call even without localStorage", () => {
 test("default theme is minimal black for v26.7.16", () => {
   assert.equal(DEFAULT_SETTINGS.theme, "minimal");
   assert.equal(DEFAULT_SETTINGS.backchannels, "natural");
+  assert.equal(DEFAULT_SETTINGS.showLatency, false);
 });
 
 test("saveSettings accepts minimal theme", () => {

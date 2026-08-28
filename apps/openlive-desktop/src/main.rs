@@ -42,9 +42,7 @@ fn main() {
             let window_for_poll = window.clone();
             std::thread::spawn(move || {
                 wait_for_gateway_ready();
-                let js = format!(
-                    "window.location.replace('http://127.0.0.1:{GATEWAY_PORT}/')"
-                );
+                let js = format!("window.location.replace('http://127.0.0.1:{GATEWAY_PORT}/')");
                 let _ = window_for_poll.eval(&js);
             });
 
@@ -144,7 +142,9 @@ fn spawn_gateway(gateway_exe: &Option<PathBuf>, web_dir: Option<&Path>) {
     match cmd.spawn() {
         Ok(child) => {
             eprintln!("[openlive-desktop] Gateway spawned (pid {})", child.id());
-            *GATEWAY_CHILD.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(child);
+            *GATEWAY_CHILD
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(child);
         }
         Err(e) => {
             eprintln!("[openlive-desktop] Failed to spawn gateway: {e}");

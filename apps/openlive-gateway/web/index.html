@@ -6,15 +6,12 @@
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="OpenLive 26.7.16 — smooth full-duplex voice with background agents." />
     <title>OpenLive</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/styles.css" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='8' fill='%236b8cff'/%3E%3C/svg%3E" />
   </head>
-  <body data-mode="idle" data-layout="focused" data-workspace="live" data-ui="minimal" data-boot="loading">
-    <!-- Boot / splash screen — white sphere + sliding brand -->
-    <div id="bootSplash" class="boot-splash" aria-hidden="false">
+  <body data-mode="listening" data-layout="focused" data-workspace="live" data-ui="minimal" data-boot="ready">
+    <!-- Optional leftover splash; first paint is the call surface. -->
+    <div id="bootSplash" class="boot-splash" hidden aria-hidden="true">
       <div class="boot-splash-inner">
         <div class="boot-sphere-wrap" aria-hidden="true">
           <div class="boot-sphere"></div>
@@ -139,7 +136,7 @@
     </button>
 
     <header class="topbar minimal-topbar">
-      <button id="brand" class="brand minimal-brand" type="button" aria-label="OpenLive menu">
+      <button id="brand" class="brand minimal-brand" type="button" aria-label="OpenLive settings">
         <span class="brand-name">OpenLive</span>
         <small class="brand-version">26.7.16</small>
       </button>
@@ -581,7 +578,7 @@
             </div>
             <label class="settings-row settings-toggle" for="latencyToggle">
               <span class="settings-row-label">Show latency</span>
-              <input id="latencyToggle" type="checkbox" checked />
+              <input id="latencyToggle" type="checkbox" />
             </label>
           </div>
         </section>
