@@ -2881,25 +2881,11 @@ function wireSetupWizard() {
 }
 
 function wireUiSoundToggle() {
-  const host = document.querySelector("#settingsPanel .sheet-body");
-  if (!host || document.querySelector("#uiSoundToggle")) return;
-  const fieldset = document.createElement("fieldset");
-  fieldset.className = "sheet-group";
-  fieldset.innerHTML = `
-    <legend>Feel</legend>
-    <label class="checkbox-row" for="uiSoundToggle">
-      <input id="uiSoundToggle" type="checkbox" ${isUiSoundMuted() ? "" : "checked"} />
-      <span>Tactile sounds (slider ticks, soft clicks)</span>
-    </label>
-    <p class="setup-hint">Subtle Web Audio feedback — never interrupts voice.</p>
-  `;
-  // Insert before Runtime if present, else append.
-  const runtime = [...host.querySelectorAll("fieldset")].find((f) =>
-    f.querySelector("legend")?.textContent?.includes("Runtime"),
-  );
-  if (runtime) host.insertBefore(fieldset, runtime);
-  else host.appendChild(fieldset);
-  document.querySelector("#uiSoundToggle")?.addEventListener("change", (event) => {
+  const toggle = document.querySelector("#uiSoundToggle");
+  if (!toggle || toggle.dataset.bound === "1") return;
+  toggle.dataset.bound = "1";
+  toggle.checked = !isUiSoundMuted();
+  toggle.addEventListener("change", (event) => {
     setUiSoundMuted(!event.target.checked);
     if (event.target.checked) {
       unlockUiAudio();
