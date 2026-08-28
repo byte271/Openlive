@@ -26,7 +26,7 @@ Carries forward all verified items from 26.7.14.1, plus the 26.7.16 agent/voice 
 - Client audio intelligence: RNNoise-style worklet, Silero-style VAD, NLMS AEC, windowed-sinc resample.
 - Semantic endpointing hybrid (~200 ms early end) + ASR revision path.
 - Gateway-native WebRTC data-channel path + provider-edge session + jitter/PLC on PCM.
-- Piper TTS status/speak endpoints + formant fallback; open-stack docs.
+- Piper TTS status/speak endpoints; demo path is neural-or-silence (formant only when explicitly selected); open-stack docs.
 
 ### Agent, tools, sandbox, profile (26.7.16)
 
@@ -44,12 +44,12 @@ Carries forward all verified items from 26.7.14.1, plus the 26.7.16 agent/voice 
   `apps/openlive-desktop/`.
 - Full-screen voice mode with hidden chrome, hover-to-reveal controls, and
   dedicated exit button / `F` shortcut.
-- Boot splash with live status text and 3 s failsafe dismissal.
-- Ripple click feedback, button hover lift, sheet spring entrance, orb glow
-  pulse, toast/backchannel scale, transcript revision flash, and ambient
-  background breathing.
-- Built-in LLM provider catalog (12 providers) available before gateway
-  connection.
+- Call-first surface: Bloub face, Mute / End / Settings, auto-join, Advanced
+  lab disclosure in Settings.
+- Ripple click feedback, sheet spring entrance, Bloub state mapping, toast /
+  backchannel motion, transcript revision flash.
+- Built-in LLM provider catalog available in Settings before gateway connection.
+- Desktop shells (Windows MSI / macOS DMG) with listening-orb first paint.
 
 These are validated with the workspace Rust test suite, JS protocol/task tests, Clippy/fmt gates as run by operators, and an optimized release build. Expand the exact pass counts in CI when CI is wired.
 
@@ -94,4 +94,4 @@ These are validated with the workspace Rust test suite, JS protocol/task tests, 
 5. GPU worker scheduler and durable authenticated control plane.
 6. Benchmark qualification, security review, soak/canary, then production claim.
 
-A compatible external native endpoint is still required until an actual open native speech model and worker are included. The mock tone/formant and conventional cascade must never be presented as native-model parity.
+A compatible external native endpoint is still required until an actual open native speech model and worker are included. Formant/mock audio and a conventional cascade without Piper must never be presented as GPT-Live / native-model parity.

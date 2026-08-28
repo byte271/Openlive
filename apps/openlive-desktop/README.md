@@ -49,12 +49,11 @@ cargo tauri build
 
 ## Notes
 
-- The desktop shell loads a local listening-orb splash immediately, then
-  navigates to the gateway UI once `http://127.0.0.1:12345/health` is up.
-  Spawning the gateway must not block first paint.
+- First paint is a local **listening-orb** splash (`splash/`), then the shell
+  navigates to the gateway call surface once `http://127.0.0.1:12345/health`
+  is up. Spawning the gateway must not block that first paint.
 - `OPENLIVE_SKIP_GATEWAY_BUILD=1` skips copying the real gateway binary
   (used by clippy). A placeholder file is written so Tauri's resource
   check still passes.
-- Replace `icons/icon.ico` and `icons/icon.icns` with branded assets before
-  publishing. Regenerate placeholders with
-  `python3 scripts/generate-icons.py`.
+- Placeholder icons live under `icons/`. Regenerate with
+  `python3 scripts/generate-icons.py` before publishing branded assets.

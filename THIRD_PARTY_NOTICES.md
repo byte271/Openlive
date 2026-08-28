@@ -84,9 +84,8 @@ Morphicons are **not** used as the speaking face.
 
 ## Fonts (web UI)
 
-| Family | Source | License |
-|--------|--------|---------|
-| **DM Sans**, **Manrope**, **Space Mono**, **Inter** (if loaded) | [Google Fonts](https://fonts.google.com/) | OFL / respective font licenses |
+The default call surface uses **system UI fonts** (`system-ui`, `-apple-system`,
+`Segoe UI`, etc.). No Google Fonts CDN is loaded on the demo path.
 
 ---
 
