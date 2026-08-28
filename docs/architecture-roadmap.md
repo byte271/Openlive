@@ -7,7 +7,7 @@ This document captures the target architecture beyond the current voice+tools MV
 
 - Deterministic tools: `web_search`, `deep_search`, `research_pool`, `calculator`, `get_time`, `identity`, sandbox `list/read/write_file`
 - Typo correction for ASR/search
-- Open-source **Piper TTS** status + install command + speak endpoint (formant fallback)
+- Open-source **Piper TTS** status + install command + speak endpoint (demo path: neural or silence)
 - Session **memory** JSON store + export API + inject into LLM context
 - Thought depth setting (voice / balanced / deep) — drives reply length + deep research pool
 - Agent routing that does **not** force-search every sentence
@@ -18,7 +18,8 @@ This document captures the target architecture beyond the current voice+tools MV
 - **Coordinated WebRTC → WebSocket fallback** with re-entry guard and retry cap
 - **Desktop shell** (Tauri v2) for Windows MSI and macOS DMG/App
 - **Full-screen voice mode** with hover-to-reveal chrome and `F` shortcut
-- **Boot splash + ripple feedback + enhanced motion** across the voice surface
+- **Call-first Bloub surface** + Morphicons controls + Advanced lab disclosure
+- Ripple feedback and sheet motion without a forced branded splash
 
 ## Next
 

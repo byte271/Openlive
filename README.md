@@ -3,32 +3,31 @@
 OpenLive is an open, model-neutral runtime for continuous voice agents. It separates deadline-sensitive interaction continuity from slower model cognition and preserves native duplex provider capabilities instead of forcing every model through a text-chat abstraction.
 
 > [!IMPORTANT]
-> **Disclaimer:** This is an independent open-source project. It is **not an official OpenAI project** and has no affiliation with OpenAI.
+> **Disclaimer:** This is an independent open-source project. It is **not an official OpenAI project** and has no affiliation with OpenAI or xAI.
 
 ## Current status
 
-**Version 26.7.16** (`v26.7.16`) targets a **GPT-Live-comparable** experience: polished live voice UI, open neural speech (Piper), client-side audio intelligence, WebRTC session path, semantic endpointing, **real tools + multi-agent sandbox**, and durable profile/memory — with original visuals and model neutrality intact.
+**Version 26.7.16** targets a **GPT-Live-comparable** experience: a call-first live surface, open neural speech (Piper), client-side audio intelligence, WebRTC session path, semantic endpointing, **real tools + multi-agent sandbox**, and durable profile/memory — with original visuals and model neutrality intact.
 
 Full parity matrix: [`docs/gpt-live-parity.md`](docs/gpt-live-parity.md) · Architecture roadmap: [`docs/architecture-roadmap.md`](docs/architecture-roadmap.md) · Open stack guide: [`docs/open-source-stack.md`](docs/open-source-stack.md) · Credits: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) · Release notes: [`docs/release-26.7.16.md`](docs/release-26.7.16.md)
 
 ### What 26.7.16 ships
 
-**Voice surface**
+**Call-first voice surface**
 
-- Minimal black live surface + setup wizard; Live Presence theme tokens.
-- Full-screen voice presence with 11 named modes and multi-layer procedural orb.
-- Inline layout toggle, live dual transcript, conversation modes, speaking-style axes.
-- Push-to-talk, barge-in with local duck, camera/screen share affordances, visual cards.
-- **Piper-first voice roster** (Lessac, Amy, Ryan, …) plus API-compatible fallbacks.
-- **Boot splash** with live status and animated page-load entrance.
-- **Ripple click feedback** and enhanced hover/lift micro-interactions across the UI.
-- Brand chrome and package version: **26.7.16**.
+- First paint is a live call: **Bloub** face on a black stage + **Mute / End / Settings** (Morphicons).
+- Session **auto-joins**. If the browser needs a gesture for the mic, the surface says **Tap to talk**.
+- Lab chrome (camera, screen share, sandbox, multi-agent, diagnostics) lives in **Settings → Advanced**.
+- Optional setup wizard remains available from Settings; it is not forced on launch.
+- Full-screen mode, live transcript, conversation modes, and speaking-style axes stay available behind Settings / shortcuts.
+- **Demo TTS policy: neural or silence.** Auto never pads with formant/mock. Formant only when you explicitly pick it.
+- Package version: **26.7.16**.
 
 **Open AI voice**
 
 - Production path: cascade → OpenAI-compatible **Piper** TTS (via LocalAI, openedai-speech, or gateway-local Piper).
-- Gateway: `GET /v1/tts/status`, `POST /v1/tts/speak`; formant fallback for demos.
-- **Graceful TTS fallback chain**: gateway TTS (Piper/formant) → browser TTS → text-only, so the conversation never hangs.
+- Gateway: `GET /v1/tts/status`, `POST /v1/tts/speak`.
+- Auto engine = Piper or silence until ready; browser / formant only when selected in Settings.
 - Licenses and attribution in `THIRD_PARTY_NOTICES.md`.
 
 **Client audio intelligence**
@@ -36,35 +35,32 @@ Full parity matrix: [`docs/gpt-live-parity.md`](docs/gpt-live-parity.md) · Arch
 - RNNoise-style noise suppression worklet (10 ms frames).
 - Silero-style VAD worklet + energy blend.
 - NLMS adaptive echo cancellation + windowed-sinc resampler.
+- Local-first barge-in: `local duck → soft_duck → hard_yield → cancel`.
 
 **Agent, tools & sandbox**
 
 - Internal agent (no OpenCode): search, deep research pool, calculator, time, identity, profile.
 - Path-safe sandbox file I/O + optional Chrome/Edge headless browse / screenshot / PDF.
 - Multi-agent pool (≤50) with SSE progress, agent classes, and destructive-action confirms.
-- Durable user profile (facts editor, drag-and-drop reorder) + session memory export.
+- Durable user profile (facts editor) + session memory export.
 - See `sandbox/README.md` and `docs/architecture-roadmap.md`.
 
 **Transport, providers & tasks**
 
 - Binary WebSocket PCM + **gateway-native WebRTC** (DTLS data channels for events/PCM).
 - Provider-edge WebRTC (OpenAI Realtime SDP) when secrets are available.
-- **Coordinated WebRTC → WebSocket fallback**: guarded re-entry, retry limit, and clean audio/TTS state reset so a failed peer connection recovers without dropping the conversation.
+- **Coordinated WebRTC → WebSocket fallback** with clean audio/TTS state reset.
 - `POST /v1/webrtc/offer` answers browser offers; `POST /v1/realtime/session` for edge secrets.
 - **Moshi** native duplex: `--provider moshi --moshi-url ws://127.0.0.1:8998/api/chat`.
-- **Built-in LLM provider catalog**: NVIDIA NIM, Groq, OpenRouter, Together, DeepSeek, Fireworks, Mistral, Ollama, OpenAI, Cerebras, SambaNova, and Custom — selectable in setup/settings even before the gateway is ready.
+- Built-in LLM provider catalog (NVIDIA NIM, Groq, OpenRouter, Ollama, …) in Settings.
 - Semantic endpointing (transcript-aware early end ~200 ms).
-- Visual cards + live translation demo (mock) / language-mode instructions.
 - Task lifecycle, evidence links, resume with dedup.
-- Configurable `--task-deadline-ms`.
-- Developer API: `GET /health`, `/v1/meta`, `/v1/sessions`, `/v1/agent/*`, `/v1/sandbox/*`, `/v1/profile`, MCP tools (+ optional API key).
-- Session persistence (JSONL under `data/openlive-sessions`), streaming safety holdback, MCP HTTP client.
+- Developer API: `GET /health`, `/v1/meta`, `/v1/sessions`, `/v1/agent/*`, `/v1/sandbox/*`, `/v1/profile`, MCP tools.
 
-**Desktop & fullscreen**
+**Desktop**
 
-- **Tauri-based desktop shells** for Windows (MSI) and macOS (DMG/App) in `apps/openlive-desktop/`.
-- **Full-screen voice mode** with hidden chrome, hover-to-reveal controls, and a dedicated exit button / `F` shortcut.
-- Keyboard shortcuts for layout, fullscreen, camera, screen share, voice picker, and more.
+- **Tauri** shells for Windows (MSI) and macOS (DMG/App) in `apps/openlive-desktop/`.
+- Local listening-orb splash first; gateway spawn must not block first paint.
 
 ### Still missing (vs full GPT-Live)
 
@@ -74,7 +70,7 @@ Full parity matrix: [`docs/gpt-live-parity.md`](docs/gpt-live-parity.md) · Arch
 
 ## Requirements
 
-- Rust 1.83 or newer.
+- Rust 1.83 or newer (CI / lockfile may require newer for builds; prefer a recent stable).
 - A modern Chromium, Firefox, or Safari browser.
 - Microphone permission.
 
@@ -84,7 +80,7 @@ Full parity matrix: [`docs/gpt-live-parity.md`](docs/gpt-live-parity.md) · Arch
 cargo run -p openlive-gateway --release
 ```
 
-Open `http://127.0.0.1:8787` and select **Start** (or press `Space` in push-to-talk mode). The mock speaks with a lightweight formant voice so you can exercise barge-in, transcript, and tasks without external services.
+Open `http://127.0.0.1:8787`. You should land on the listening call surface immediately. Talk (or tap the orb / Mute if the browser gated the mic). Prefer installing Piper for real voice; without it the demo path stays silent rather than faking a formant pad.
 
 ## Run open-source neural voice (recommended)
 
@@ -94,11 +90,8 @@ Use any OpenAI-compatible stack that exposes:
 - `POST /v1/chat/completions`
 - `POST /v1/audio/speech` with `response_format: "pcm"` (24 kHz mono PCM16 preferred)
 
-Example with Piper-style voice ids:
-
 ```bash
 # API keys: set in the environment only — never commit keys into this repo.
-# omit or leave empty for local unauthenticated servers
 export OPENLIVE_MODEL_API_KEY
 
 cargo run -p openlive-gateway --release -- \
@@ -115,7 +108,6 @@ See [`docs/open-source-stack.md`](docs/open-source-stack.md) for LocalAI / opene
 ## Run a native realtime speech endpoint
 
 ```bash
-# Read the key from your shell environment (do not put keys in project files)
 export OPENLIVE_MODEL_API_KEY
 
 cargo run -p openlive-gateway --release -- \
@@ -127,20 +119,13 @@ cargo run -p openlive-gateway --release -- \
 
 ## Desktop app (Windows / macOS)
 
-OpenLive ships a Tauri v2 desktop shell in `apps/openlive-desktop`. The shell
-loads the same web UI as the browser and can spawn the gateway as a child
-process.
-
 ```bash
-# Build the gateway first, then the desktop app
 cargo build -p openlive-gateway --release
 cd apps/openlive-desktop
 cargo tauri build
 ```
 
-Supported bundles: Windows MSI, macOS DMG/App. See
-[`apps/openlive-desktop/README.md`](apps/openlive-desktop/README.md) for dev
-mode and platform prerequisites.
+See [`apps/openlive-desktop/README.md`](apps/openlive-desktop/README.md).
 
 ## Deterministic replay
 
@@ -152,16 +137,12 @@ cargo run -p openlive-runtime --bin openlive-replay -- \
 ## Persistence, safety & MCP
 
 ```bash
-# Default: write session events/tasks under data/openlive-sessions
 cargo run -p openlive-gateway --release
 
-# Disable durability or safety:
 cargo run -p openlive-gateway --release -- --no-persist --safety false
 
-# Attach a remote MCP tool host:
 cargo run -p openlive-gateway --release -- --mcp-url http://127.0.0.1:3100/mcp
 
-# Deep model + local knowledge notes for complex turns:
 cargo run -p openlive-gateway --release -- \
   --provider openai-compatible \
   --model-base-url http://127.0.0.1:8000/v1 \
@@ -169,12 +150,10 @@ cargo run -p openlive-gateway --release -- \
   --deep-llm-model qwen2.5-32b \
   --knowledge-dir ./knowledge
 
-# Hybrid: fast local duplex + deep cascade for hard turns
 cargo run -p openlive-gateway --release -- \
   --provider hybrid \
   --model-base-url http://127.0.0.1:8000/v1
 
-# Local Chronos full-duplex latency gate
 cargo run -p openlive-runtime --release --bin openlive-full-duplex-bench -- --turns 50
 ```
 
@@ -182,7 +161,6 @@ cargo run -p openlive-runtime --release --bin openlive-full-duplex-bench -- --tu
 
 ```bash
 cargo test --workspace --release
-# Integration tests need a debug binary:
 cargo build -p openlive-gateway && cargo test -p openlive-gateway --test task_lifecycle
 node --test apps/openlive-gateway/web/tests/*.test.js
 ```

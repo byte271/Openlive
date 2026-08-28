@@ -5,6 +5,10 @@
 **Cargo / package version:** `26.7.15`  
 **UI display:** `v26.7.15` / `26.7.15`
 
+> Historical release note. **26.7.16** changed the default path to a call-first
+> surface with **neural-or-silence** demo TTS (no formant pad). See
+> [`release-26.7.16.md`](release-26.7.16.md).
+
 ## Goal
 
 Ship a **GPT-Live-comparable** operator experience: polished live voice UI,

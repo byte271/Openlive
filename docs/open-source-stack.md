@@ -51,9 +51,10 @@ Pick voices that your TTS server actually installs; OpenLive forwards the
 cargo run -p openlive-gateway --release
 ```
 
-The mock provider uses an **original formant synthesizer** so the desk is
-demoable without GPU or network. It is **not** production TTS — switch to
-Piper for a real AI voice.
+The mock provider can synthesize formant audio for low-level transport tests,
+but the **default web demo path never plays it**. Auto TTS is Piper or silence
+until neural voice is ready. Switch to Piper (or another `/v1/audio/speech`
+server) for a real AI voice.
 
 ## Browser audio intelligence
 
@@ -142,7 +143,8 @@ dev mode and platform prerequisites.
 
 ## UI
 
-Default theme is **Live Presence** (`chatgpt` token) — an original OpenLive
-visual inspired by modern voice-mode UX, not a proprietary asset clone.
-v26.7.16 adds a boot splash, full-screen mode, ripple click feedback, and a
-full set of entrance/transition animations.
+Default theme is **minimal black** — a call-first surface with the **Bloub**
+face and Morphicons Mute / End / Settings. Lab chrome lives in Settings →
+Advanced. Full-screen mode, ripple feedback, and sheet motion remain available.
+OpenLive is not affiliated with OpenAI or xAI; Bloub’s design imitates the
+x.ai avatar under MIT terms (see `THIRD_PARTY_NOTICES.md`).

@@ -1,6 +1,8 @@
 # Evaluation and latency telemetry (v26.7.16)
 
-Openlive does not claim experiential parity without measurements. Protocol 1.0 emits generation-scoped `latency_mark` events from the gateway's monotonic clock:
+OpenLive does not claim experiential parity with GPT-Live without measurements.
+Call-first UX (listening orb, barge-in, neural-or-silence TTS) still needs the
+instrumented latency marks below for honest comparison. Protocol 1.0 emits generation-scoped `latency_mark` events from the gateway's monotonic clock:
 
 - `response_committed`;
 - `first_provider_event`;

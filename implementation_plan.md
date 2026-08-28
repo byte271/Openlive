@@ -1,7 +1,7 @@
 # OpenLive → GPT-Live Parity — Implementation Plan
 
-**Status date:** 2026-07-15  
-**Baseline:** **26.7.16** (Live Presence + open voice stack)  
+**Status date:** 2026-08-28  
+**Baseline:** **26.7.16** (call-first surface + open voice stack + agent workspace)  
 **Goal:** Model-neutral, open, production-grade competitor to OpenAI GPT-Live / Advanced Voice Mode.
 
 ---
@@ -11,14 +11,15 @@
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         BROWSER CLIENT                                      │
-│  RNNoise WASM → Silero VAD → Emotion Detect → WebGL Orb                     │
-│  Enhanced AudioSession (FIR resample, NLMS AEC, client endpointing)         │
-│  WebRTC (Opus) ← fallback WebSocket Binary PCM                              │
+│  Call-first UI: Bloub face · Mute/End/Settings · Advanced lab disclosure    │
+│  RNNoise worklet → Silero-style VAD → NLMS AEC → FIR resample               │
+│  WebRTC (data-channel PCM) ← fallback WebSocket Binary PCM                  │
 └────────────────────────────────┬────────────────────────────────────────────┘
                                  │
 ┌────────────────────────────────▼────────────────────────────────────────────┐
 │  GATEWAY: WebRTC signaling · Semantic endpointing · MCP · Safety · Chronos  │
 │  Providers: Mock · Cascade · Realtime · Moshi · HybridStreaming             │
+│  TTS demo policy: Piper or silence (formant only if explicitly selected)    │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -35,9 +36,9 @@
 | NLMS adaptive AEC | **Done** | `NlmsAec` in `audio-utils.js` |
 | Polyphase / windowed-sinc FIR resampler | **Done** | `audio-utils.js` |
 | Chain in AudioSession | **Done** | mic → RNNoise → Silero → capture → NLMS → FIR → PCM16 |
-| Open AI voice (Piper) | **Done** | Piper-first roster + cascade docs; formant mock |
-| UI Live Presence | **Done** | Default theme + credits panel |
-| THIRD_PARTY_NOTICES | **Done** | Root notices file |
+| Open AI voice (Piper) | **Done** | Piper-first roster; demo path neural-or-silence |
+| Call-first UI | **Done** | Bloub + Morphicons; Advanced lab disclosure |
+| THIRD_PARTY_NOTICES | **Done** | Root notices file (Bloub / Morphicons / Piper) |
 
 ### Phase 2: WebRTC / Opus Transport — **PARTIAL**
 
@@ -97,13 +98,14 @@
 
 | Item | Status | Notes |
 |------|--------|-------|
-| `chatgpt` theme + CSS variables | **Done** | `styles.css`, `settings-store.js` |
-| Wave-Particle orb (Canvas 2D) | **Done** | `voice-visualizer.js` Bezier blobs + particle ring |
-| Boot splash + live status | **Done** | `app.js` + `index.html` + `styles.css` |
+| Call-first minimal black surface | **Done** | Auto-join; Mute / End / Settings dock |
+| Bloub face engine | **Done** | Vendored MIT `vendor/bloub/`; not affiliated with xAI |
+| Morphicons call controls | **Done** | Mic ↔ MicOff, Settings ↔ X, PhoneOff end |
+| Advanced lab disclosure in Settings | **Done** | Camera, sandbox, agents, diagnostics |
 | Full-screen voice mode | **Done** | Settings toggle, `F` shortcut, exit button |
-| Ripple click feedback + loading states | **Done** | `app.js` + `styles.css` |
-| Page-load / sheet / button / toast animations | **Done** | `styles.css` v26.7.16 animation section |
-| Three.js WebGL Icosphere + GLSL | **Todo** | |
+| Ripple click feedback + sheet motion | **Done** | `app.js` + `styles.css` |
+| Legacy Canvas visualizer | **Kept** | Hidden behind Bloub on the default path |
+| Three.js WebGL Icosphere + GLSL | **Dropped** | Bloub covers the face; not required |
 
 ### Phase 8: Emotion-Aware Responses — **PARTIAL**
 
@@ -147,7 +149,8 @@
 
 - WebRTC signaling + gateway-native data-channel path + browser peer
 - Semantic VAD hybrid + cascade ASR prior window + revise UI
-- Live Presence / minimal-black UI + Piper TTS + formant fallback
+- Call-first Bloub surface + Morphicons Mute/End/Settings + Advanced lab disclosure
+- Piper TTS with neural-or-silence demo policy (formant only if explicitly selected)
 - Agent tools, multi-agent pool, sandbox, profile/memory, confirms
 - Version surface: Cargo / UI / living docs all **26.7.16**
 
@@ -176,7 +179,7 @@ node --test apps/openlive-gateway/web/tests/*.test.js
 4. **Tool authz audit / soak** — production-depth gates on agent sandbox  
 5. **Benchmark qualification** — Full-Duplex-Bench / VoiceBench manifests
 6. **Phase 4 Moshi** — true native duplex  
-7. **Phases 7–10** — WebGL orb, emotion, benches, developer API  
+7. **Phases 7–10** — Emotion cues, benches, developer API polish (orb face ships via Bloub)
 
 ---
 

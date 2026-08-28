@@ -1,5 +1,0 @@
-{
-  "name": "OpenLive",
-  "install": "bash .cursor/install.sh",
-  "start": "bash .cursor/start-gateway.sh"
-}

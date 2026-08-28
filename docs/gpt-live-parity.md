@@ -57,8 +57,8 @@ Legend: ✅ CLONE · 🟡 DIFFERENT · ❌ GAP
 
 | # | Feature | GPT-Live / AVM behavior | Openlive 26.7.16 status | Category |
 |---|---------|-------------------------|------------------------|----------|
-| 1 | Signature voice orb | Blue animated orb, state-driven | Bloub face (x.ai-inspired, MIT, not affiliated) on a black call stage | ✅ CLONE (original visual) |
-| 2 | State-driven orb color | Blue / cyan / violet / red shifts | 11 named modes, each with its own palette | ✅ CLONE |
+| 1 | Signature voice orb | Blue animated orb, state-driven | Bloub face (x.ai-inspired, MIT, not affiliated) on a black call stage; auto-listening first paint | ✅ CLONE (original visual) |
+| 2 | State-driven orb color | Blue / cyan / violet / red shifts | Bloub listen/speak/barge-in states; optional presence palettes behind Settings | ✅ CLONE |
 | 3 | Live dual transcript | Inline user + assistant bubbles | Persistent scrolling transcript with role-differentiated bubbles + system channel | ✅ CLONE |
 | 4 | Inline-in-chat voice mode | Late-2025 redesign moved voice inline with chat | Layout toggle: focused vs inline | ✅ CLONE |
 | 5 | Voice picker | Named voices + personality descriptors | Piper-first roster + provider manifest + offline fallback | ✅ CLONE |
@@ -71,7 +71,7 @@ Legend: ✅ CLONE · 🟡 DIFFERENT · ❌ GAP
 | 12 | Backchanneling ("mhmm") | Native GPT-Live behavior | UI affordance + event handler; badge near orb | ✅ CLONE (UI; provider must emit) |
 | 13 | Camera input | Camera button streams frames | UI + `C` shortcut; truthful media lifecycle; visual-input negotiation | ✅ CLONE |
 | 14 | Screen sharing | Available alongside camera | UI + `Shift+C`; truthful media lifecycle | ✅ CLONE |
-| 15 | Mute / end-call / camera controls | Persistent in-call controls | Mute, End, Camera, Screen, Voice, Mode, Instructions — richer than AVM | ✅ CLONE (extended) |
+| 15 | Mute / end-call / camera controls | Persistent in-call controls | Default dock: Mute / End / Settings (Morphicons). Camera / screen / modes in Settings → Advanced | ✅ CLONE |
 | 16 | Daily/session quota indicator | Plus: 1 hr/day; free: 15 min preview | Operator-configured cap; soft warning at 80% | ✅ CLONE |
 | 17 | Latency display | Not surfaced in AVM UI | Latency pill + diagnostics p50/p95/jitter/loss | 🟡 DIFFERENT (Openlive exposes it) |
 | 18 | Live translation | Built-in GPT-Live feature | VisualCard + language chip instructions; cascade hop for production | 🟡 DIFFERENT (partial) |
@@ -94,7 +94,7 @@ Legend: ✅ CLONE · 🟡 DIFFERENT · ❌ GAP
 | 35 | Diagnostics on-demand | Hidden in AVM | Diagnostics drawer + LiveBench | 🟡 DIFFERENT |
 | 36 | Model neutrality | AVM locked to OpenAI models | Mock / cascade / realtime / moshi / hybrid | 🟡 DIFFERENT (Openlive beats AVM) |
 | 37 | Theme customization | AVM orb is fixed | Live Presence / Graphite / Signal + motion intensity | 🟡 DIFFERENT |
-| 38 | Onboarding overlay | (Not in AVM) | First-run onboarding + setup wizard | 🟡 DIFFERENT (Openlive original) |
+| 38 | Onboarding overlay | (Not in AVM) | Optional setup wizard / shortcuts sheet from Settings — not forced on launch | 🟡 DIFFERENT (Openlive original) |
 | 39 | Settings persistence | Account-scoped prefs | `localStorage` + durable server profile | ✅ CLONE (extended) |
 | 40 | Keyboard shortcuts | (Not in AVM) | 10+ shortcuts | 🟡 DIFFERENT (Openlive beats AVM) |
 | 41 | Task acknowledgement lifecycle | (Not in AVM) | Full lifecycle; p50 = 2 ms | 🟡 DIFFERENT (Openlive original) |
@@ -131,9 +131,9 @@ enforce p50 ≤ 50 ms and p95 ≤ 200 ms.
 ## What "open-source clone" means here
 
 Openlive 26.7.16 is a **behavioral clone** of gpt-live's voice surface,
-not a **visual clone**. The orb, palettes, copy, layout, and animation
-are original Openlive geometry — they do not reproduce any proprietary
-interface or its assets.
+not a **visual clone**. The default face uses the MIT **Bloub** engine
+(x.ai-inspired; not affiliated with xAI or OpenAI). Layout, chrome, and
+copy are OpenLive originals — they do not reproduce proprietary assets.
 
 The clone contract is: a user who is familiar with AVM should be able
 to use Openlive without relearning anything, and an operator comparing
