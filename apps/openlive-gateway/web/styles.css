@@ -3543,6 +3543,8 @@ html[data-theme="minimal"] {
 html[data-theme="minimal"] body,
 body[data-ui="minimal"] {
   background: #000;
+  overflow: hidden;
+  height: 100dvh;
 }
 
 html[data-theme="minimal"] .ambient {
@@ -3772,9 +3774,16 @@ body[data-ui="minimal"] .minimal-shell {
 }
 
 body[data-ui="minimal"] .minimal-desk {
-  min-height: 100svh;
+  min-height: 100dvh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: visible;
+}
+
+body[data-ui="minimal"] .live-desk,
+body[data-ui="minimal"] .voice-stage {
+  overflow: visible;
 }
 
 body[data-ui="minimal"] .minimal-stage {
@@ -3850,17 +3859,22 @@ body[data-ui="minimal"] .minimal-dock {
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 0 16px calc(24px + env(safe-area-inset-bottom));
+  padding: 0 16px max(20px, env(safe-area-inset-bottom));
   background: transparent;
   border: 0;
   display: flex;
   justify-content: center;
   align-items: flex-end;
-  z-index: 30;
+  z-index: 80;
   transform: none !important;
   animation: none !important;
   opacity: 1 !important;
   min-height: 104px;
+  pointer-events: none;
+}
+body[data-ui="minimal"] .minimal-dock .call-chrome,
+body[data-ui="minimal"] .minimal-dock .call-btn {
+  pointer-events: auto;
 }
 
 .composer-bar {

@@ -255,32 +255,6 @@
             <footer class="drawer-foot"><span id="transcriptHint" class="drawer-hint">Fillers are cleaned for agent tasks when enabled.</span></footer>
           </aside>
         </section>
-
-        <!-- Bottom chrome — Mute / End / Settings only -->
-        <footer class="control-dock minimal-dock" aria-label="Call controls">
-          <div class="call-chrome" role="toolbar" aria-label="Mute, End, Settings">
-            <button id="primary" class="call-btn call-mute" type="button" aria-label="Mute">
-              <span class="morph-host" data-morph="mute"></span>
-              <span id="primaryLabel" class="call-btn-label">Mute</span>
-            </button>
-            <button id="end" class="call-btn call-end" type="button" aria-label="End" title="End (Esc)">
-              <span class="morph-host" data-morph="end"></span>
-              <span class="call-btn-label">End</span>
-            </button>
-            <button id="settings" class="call-btn call-settings" type="button" aria-label="Settings" title="Settings (S)" aria-expanded="false">
-              <span class="morph-host" data-morph="settings"></span>
-              <span class="call-btn-label">Settings</span>
-            </button>
-          </div>
-          <input id="composerInput" class="composer-input" type="text" placeholder="Type or speak" autocomplete="off" hidden />
-          <button id="taskAdd" class="composer-icon" type="button" hidden aria-label="New task"></button>
-          <!-- Hidden dock buttons retained for keyboard / parity modules -->
-          <button id="instructions" type="button" hidden><span id="instructionsBadge" hidden></span></button>
-          <button id="camera" type="button" hidden></button>
-          <button id="screenShare" type="button" hidden></button>
-          <button id="mode" type="button" hidden><span id="modeBadge">Open</span></button>
-          <button id="voice" type="button" hidden><span id="voiceBadge">Auto</span></button>
-        </footer>
       </main>
 
       <aside class="context-rail minimal-rail" aria-label="Tasks and evidence">
@@ -300,6 +274,32 @@
         <section class="trust-strip"><div><strong>Private by default</strong><p>Keys stay in this browser until you send a request.</p></div></section>
       </aside>
     </div>
+
+    <!-- Call chrome sits at the document root so ancestor overflow cannot clip it. -->
+    <footer class="control-dock minimal-dock" aria-label="Call controls">
+      <div class="call-chrome" role="toolbar" aria-label="Mute, End, Settings">
+        <button id="primary" class="call-btn call-mute" type="button" aria-label="Mute">
+          <span class="morph-host" data-morph="mute"></span>
+          <span id="primaryLabel" class="call-btn-label">Mute</span>
+        </button>
+        <button id="end" class="call-btn call-end" type="button" aria-label="End" title="End (Esc)">
+          <span class="morph-host" data-morph="end"></span>
+          <span class="call-btn-label">End</span>
+        </button>
+        <button id="settings" class="call-btn call-settings" type="button" aria-label="Settings" title="Settings (S)" aria-expanded="false">
+          <span class="morph-host" data-morph="settings"></span>
+          <span class="call-btn-label">Settings</span>
+        </button>
+      </div>
+      <input id="composerInput" class="composer-input" type="text" placeholder="Type or speak" autocomplete="off" hidden />
+      <button id="taskAdd" class="composer-icon" type="button" hidden aria-label="New task"></button>
+      <!-- Hidden dock buttons retained for keyboard / parity modules -->
+      <button id="instructions" type="button" hidden><span id="instructionsBadge" hidden></span></button>
+      <button id="camera" type="button" hidden></button>
+      <button id="screenShare" type="button" hidden></button>
+      <button id="mode" type="button" hidden><span id="modeBadge">Open</span></button>
+      <button id="voice" type="button" hidden><span id="voiceBadge">Auto</span></button>
+    </footer>
 
     <section id="benchWorkspace" class="bench-workspace" hidden>
       <header class="bench-hero"><div><span class="eyebrow">26.7.16</span><h1>LiveBench</h1></div><div class="bench-score"><strong>—</strong></div></header>

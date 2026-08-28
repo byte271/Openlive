@@ -535,10 +535,6 @@ controls.debug?.addEventListener("click", () => {
   playClick("soft");
   toggleDiagnostics();
 });
-controls.brand?.addEventListener("click", () => {
-  playClick("soft");
-  setCallSettingsOpen();
-});
 controls.closeDebug?.addEventListener("click", () => {
   playClick("soft");
   toggleDiagnostics(false);
@@ -766,6 +762,13 @@ function setCallSettingsOpen(force) {
   controls.settings?.setAttribute("aria-expanded", String(next));
   return next;
 }
+
+controls.brand?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  playClick("soft");
+  setCallSettingsOpen();
+});
 
 async function refreshTtsWarmup() {
   try {
