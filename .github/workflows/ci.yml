@@ -66,12 +66,8 @@ jobs:
           key: cargo-tauri-2.11.4-${{ runner.os }}
 
       - name: Install Tauri CLI
-        run: |
-          if cargo tauri --version 2>/dev/null | grep -qF '2.11.4'; then
-            echo "tauri-cli 2.11.4 already installed"
-          else
-            cargo install tauri-cli --version 2.11.4 --force
-          fi
+        # --force keeps cached runners healthy when cargo-tauri already exists.
+        run: cargo install tauri-cli --version 2.11.4 --force
 
       - name: Lint desktop app
         working-directory: apps/openlive-desktop
