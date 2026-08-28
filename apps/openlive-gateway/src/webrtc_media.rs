@@ -99,7 +99,7 @@ impl WebRtcHub {
 
     #[must_use]
     pub fn peer_count(&self) -> usize {
-        self.peers.lock().map(|g| g.len()).unwrap_or(0)
+        self.peers.lock().map_or(0, |g| g.len())
     }
 
     /// Answer a browser SDP offer. Returns (`answer_sdp`, session).

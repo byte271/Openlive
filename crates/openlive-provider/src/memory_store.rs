@@ -68,8 +68,7 @@ pub fn append_memory(role: &str, text: &str, tags: Vec<String>) -> Result<Memory
     let mut doc = load_memory();
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_millis() as u64);
     doc.entries.push(MemoryEntry {
         id: format!("m{ts}"),
         role: role.to_owned(),

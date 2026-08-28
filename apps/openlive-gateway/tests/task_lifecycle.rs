@@ -2,10 +2,10 @@
 //!
 //! This test spawns the `openlive-gateway` binary with the mock provider,
 //! opens a WebSocket connection, and exercises the complete task lifecycle:
-//!   1. capability_offer → capability_selected (resume_supported = true)
-//!   2. task_requested → task_acknowledged (latency < 500ms)
-//!   3. task_cancel → task_outcome (result = cancelled)
-//!   4. session_resume → replay of buffered task_acknowledged
+//!   1. `capability_offer` → `capability_selected` (`resume_supported` = true)
+//!   2. `task_requested` → `task_acknowledged` (latency < 500ms)
+//!   3. `task_cancel` → `task_outcome` (result = cancelled)
+//!   4. `session_resume` → replay of buffered `task_acknowledged`
 //!
 //! The test uses `tokio-tungstenite` as the WebSocket client and reads
 //! binary envelopes via the same framing the browser uses. It is the
@@ -54,9 +54,10 @@ async fn spawn_gateway() -> (String, tokio::process::Child) {
     // Wait for the gateway to start listening.
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        if Instant::now() > deadline {
-            panic!("gateway did not start listening on {listen} within 5s");
-        }
+        assert!(
+            Instant::now() <= deadline,
+            "gateway did not start listening on {listen} within 5s"
+        );
         if tokio::net::TcpStream::connect(&listen).await.is_ok() {
             break;
         }
@@ -112,9 +113,7 @@ async fn wait_for_event(
 ) -> EventEnvelope {
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
-        if Instant::now() > deadline {
-            panic!("timed out waiting for event");
-        }
+        assert!(Instant::now() <= deadline, "timed out waiting for event");
         let envelope = recv_envelope(socket).await;
         if predicate(&envelope.event) {
             return envelope;
@@ -123,6 +122,7 @@ async fn wait_for_event(
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn task_lifecycle_request_acknowledge_cancel_resume() {
     let (url, mut child) = spawn_gateway().await;
 
@@ -269,7 +269,7 @@ async fn task_lifecycle_request_acknowledge_cancel_resume() {
                     return envelope;
                 }
                 RealtimeEvent::Pong => return envelope,
-                _ => continue,
+                _ => {}
             }
         }
     })
@@ -488,7 +488,9 @@ async fn duplicate_task_id_is_rejected() {
 /// If these thresholds regress, the orchestrator's `admit()` path has grown
 /// non-trivial work and needs profiling.
 #[tokio::test]
+#[allow(clippy::doc_markdown)]
 async fn task_acknowledgement_latency_benchmark() {
+    const SAMPLES: usize = 50;
     let (url, mut child) = spawn_gateway().await;
 
     let (mut socket, _response) = tokio_tungstenite::connect_async(&url)
@@ -530,9 +532,8 @@ async fn task_acknowledgement_latency_benchmark() {
     })
     .await;
 
-    // Send 50 task_requested events, then collect 50 task_acknowledged
+    // Send 50 `task_requested` events, then collect 50 `task_acknowledged`
     // events, measuring the round-trip for each.
-    const SAMPLES: usize = 50;
     let mut task_ids = Vec::with_capacity(SAMPLES);
     let mut send_times = Vec::with_capacity(SAMPLES);
 
@@ -566,15 +567,16 @@ async fn task_acknowledgement_latency_benchmark() {
             .expect("timed out waiting for ack")
             .expect("stream closed")
             .expect("ws error");
-        let text = match envelope {
-            Message::Text(t) => t,
-            _ => continue,
+        let Message::Text(text) = envelope else {
+            continue;
         };
         let envelope: EventEnvelope = serde_json::from_str(&text).expect("deserialize");
         if let RealtimeEvent::TaskAcknowledged(ack) = &envelope.event {
             if let Some(idx) = task_ids.iter().position(|id| *id == ack.task_id) {
                 if acked_ids.insert(ack.task_id) {
-                    latencies.push(send_times[idx].elapsed().as_millis() as u64);
+                    latencies.push(
+                        u64::try_from(send_times[idx].elapsed().as_millis()).unwrap_or(u64::MAX),
+                    );
                 }
             }
         }

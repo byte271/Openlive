@@ -1261,7 +1261,7 @@ pub async fn web_search_with_sources(
             ranked.push((title_rank(&c, &cleaned), c));
         }
     }
-    ranked.sort_by(|a, b| b.0.cmp(&a.0));
+    ranked.sort_by_key(|a| std::cmp::Reverse(a.0));
     let candidates: Vec<String> = ranked.into_iter().map(|(_, t)| t).collect();
 
     for title in candidates.into_iter().take(8) {
@@ -2080,8 +2080,7 @@ pub fn simple_eval(expr: &str) -> Result<f64, String> {
 fn chrono_lite_now() -> String {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_secs());
     let tod = secs % 86_400;
     let h = tod / 3600;
     let m = (tod % 3600) / 60;

@@ -183,7 +183,7 @@ pub fn provider_catalog() -> serde_json::Value {
         {
             "id": "mock",
             "class": "mock",
-            "summary": "Offline formant duplex for demos (no external services)",
+            "summary": "Offline duplex for local UI (no external services; no formant on the demo path)",
             "cli": "--provider mock"
         },
         {

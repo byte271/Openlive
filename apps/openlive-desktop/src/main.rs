@@ -3,6 +3,9 @@
 // Wraps the openlive-gateway web surface in a Tauri webview. The gateway
 // server is spawned as a child process on startup, kept alive for the
 // lifetime of the app, and killed on exit.
+//
+// The listening orb is shown immediately from a local splash page. Gateway
+// spawn must not block first paint.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -12,7 +15,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
-/// Port the gateway listens on (kept in sync with tauri.conf.json devUrl).
+/// Port the gateway listens on (kept in sync with splash + web UI).
 const GATEWAY_PORT: u16 = 12345;
 
 static GATEWAY_CHILD: Mutex<Option<Child>> = Mutex::new(None);
@@ -20,26 +23,28 @@ static GATEWAY_CHILD: Mutex<Option<Child>> = Mutex::new(None);
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
-            // Resolve the gateway binary and web assets, then spawn the gateway.
-            // We do this inside setup() so we can use app.path().resource_dir()
-            // for bundled resources and fall back to the source tree in dev mode.
             let (gateway_exe, web_dir) = resolve_gateway_and_web(app.handle());
             spawn_gateway(&gateway_exe, web_dir.as_deref());
-            wait_for_gateway_ready();
 
-            // Create the main window only after the gateway is ready so the
-            // webview never sees an ERR_CONNECTION_REFUSED page.
-            let url = format!("http://127.0.0.1:{GATEWAY_PORT}");
-            tauri::WebviewWindowBuilder::new(
+            // Show the listening orb immediately. Splash polls /health, and a
+            // background thread also navigates once TCP is up.
+            let window = tauri::WebviewWindowBuilder::new(
                 app,
                 "main",
-                tauri::WebviewUrl::External(url.parse().unwrap()),
+                tauri::WebviewUrl::App("index.html".into()),
             )
             .title("OpenLive")
             .inner_size(1280.0, 820.0)
             .min_inner_size(900.0, 640.0)
             .center()
             .build()?;
+
+            let window_for_poll = window.clone();
+            std::thread::spawn(move || {
+                wait_for_gateway_ready();
+                let js = format!("window.location.replace('http://127.0.0.1:{GATEWAY_PORT}/')");
+                let _ = window_for_poll.eval(&js);
+            });
 
             Ok(())
         })
@@ -83,7 +88,7 @@ fn resolve_gateway_and_web(handle: &tauri::AppHandle) -> (Option<PathBuf>, Optio
     // 2. Dev mode: find the project root by walking up from the executable.
     let exe_dir = std::env::current_exe()
         .ok()
-        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .and_then(|p| p.parent().map(Path::to_path_buf))
         .unwrap_or_else(|| PathBuf::from("."));
 
     if let Some(project_root) = find_project_root(&exe_dir) {
@@ -137,7 +142,9 @@ fn spawn_gateway(gateway_exe: &Option<PathBuf>, web_dir: Option<&Path>) {
     match cmd.spawn() {
         Ok(child) => {
             eprintln!("[openlive-desktop] Gateway spawned (pid {})", child.id());
-            *GATEWAY_CHILD.lock().unwrap() = Some(child);
+            *GATEWAY_CHILD
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(child);
         }
         Err(e) => {
             eprintln!("[openlive-desktop] Failed to spawn gateway: {e}");

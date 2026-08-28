@@ -233,8 +233,7 @@ mod tests {
             "openlive-know-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
+                .map_or(0, |d| d.as_nanos())
         ));
         fs::create_dir_all(&dir).unwrap();
         let mut file = fs::File::create(dir.join("notes.md")).unwrap();

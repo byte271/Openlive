@@ -204,8 +204,7 @@ mod tests {
     fn tmp_store() -> SessionStore {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
+            .map_or(0, |d| d.as_nanos());
         let path = std::env::temp_dir().join(format!("openlive-persist-{stamp}"));
         SessionStore::open(path).expect("store")
     }

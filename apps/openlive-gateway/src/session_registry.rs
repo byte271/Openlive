@@ -63,12 +63,11 @@ impl SessionRegistry {
     pub fn list(&self) -> Vec<SessionInfo> {
         self.inner
             .lock()
-            .map(|guard| guard.values().cloned().collect())
-            .unwrap_or_default()
+            .map_or_else(|_| Vec::new(), |guard| guard.values().cloned().collect())
     }
 
     pub fn active_count(&self) -> usize {
-        self.inner.lock().map(|g| g.len()).unwrap_or(0)
+        self.inner.lock().map_or(0, |g| g.len())
     }
 
     pub fn opened_total(&self) -> u64 {
@@ -79,8 +78,7 @@ impl SessionRegistry {
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
-        .unwrap_or(0)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
 #[cfg(test)]

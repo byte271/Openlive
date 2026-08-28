@@ -66,10 +66,14 @@ jobs:
           key: cargo-tauri-2.11.4-${{ runner.os }}
 
       - name: Install Tauri CLI
-        run: cargo install tauri-cli --version 2.11.4
+        # --force keeps cached runners healthy when cargo-tauri already exists.
+        run: cargo install tauri-cli --version 2.11.4 --force
 
       - name: Lint desktop app
         working-directory: apps/openlive-desktop
+        env:
+          # Clippy/check must not require a prebuilt gateway binary.
+          OPENLIVE_SKIP_GATEWAY_BUILD: "1"
         run: |
           cargo fmt --all -- --check
           cargo clippy --all-targets --all-features -- -D warnings

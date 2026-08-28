@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenLive</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0a0a0c;
+        color: #f4f4f2;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        display: grid;
+        place-items: center;
+      }
+      .stage {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+      }
+      .orb {
+        width: min(42vmin, 280px);
+        height: min(42vmin, 280px);
+      }
+      .copy {
+        text-align: center;
+      }
+      .label {
+        margin: 0;
+        letter-spacing: 0.28em;
+        text-transform: uppercase;
+        font-size: 11px;
+        opacity: 0.72;
+      }
+      .detail {
+        margin: 8px 0 0;
+        font-size: 15px;
+        opacity: 0.88;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <svg class="orb" viewBox="-158 -158 316 316" role="img" aria-label="OpenLive listening">
+        <circle cx="0" cy="0" r="118" fill="#f4f4f2" />
+        <ellipse cx="-28" cy="-6" rx="18" ry="34" fill="#0a0a0c" transform="rotate(-18 -28 -6)" />
+        <ellipse cx="28" cy="-6" rx="18" ry="34" fill="#0a0a0c" transform="rotate(18 28 -6)" />
+      </svg>
+      <div class="copy">
+        <p class="label" id="status">Listening</p>
+        <p class="detail">Speak freely.</p>
+      </div>
+    </div>
+    <script>
+      const GATEWAY = "http://127.0.0.1:12345";
+      const status = document.getElementById("status");
+      async function ready() {
+        try {
+          const response = await fetch(GATEWAY + "/health", { cache: "no-store" });
+          return response.ok;
+        } catch {
+          return false;
+        }
+      }
+      async function waitThenOpen() {
+        for (let i = 0; i < 80; i++) {
+          if (await ready()) {
+            window.location.replace(GATEWAY + "/");
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        status.textContent = "Reconnecting";
+        window.location.replace(GATEWAY + "/");
+      }
+      waitThenOpen();
+    </script>
+  </body>
+</html>

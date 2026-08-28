@@ -26,8 +26,9 @@
   color-scheme: dark;
 
   /* Typography */
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
+  --font-display: var(--font-sans);
   --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
 
   /* Spacing scale (4px base) */
@@ -154,7 +155,9 @@ html[data-theme="signal"] {
   transition: opacity 0.8s var(--ease-out), visibility 0.8s var(--ease-out);
 }
 
-.boot-splash.is-hidden {
+.boot-splash.is-hidden,
+.boot-splash[hidden] {
+  display: none !important;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -510,18 +513,25 @@ svg {
   display: block;
 }
 
-/* Fallback for inline paths; <use> symbols carry their own stroke attrs. */
-svg path,
-svg rect,
-svg circle,
-svg line,
-svg polyline,
-svg polygon {
+/* Fallback for inline icon paths; <use> symbols carry their own stroke attrs.
+   Bloub's face uses filled mask geometry — exclude it from the icon stroke reset. */
+svg:not(.bloub-orb) path,
+svg:not(.bloub-orb) rect,
+svg:not(.bloub-orb) circle,
+svg:not(.bloub-orb) line,
+svg:not(.bloub-orb) polyline,
+svg:not(.bloub-orb) polygon {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.bloub-orb path,
+.bloub-orb rect,
+.bloub-orb circle {
+  stroke: none;
 }
 
 .icon-button svg,
@@ -3527,12 +3537,14 @@ html[data-theme="minimal"] {
   --ambient-1: transparent;
   --ambient-2: transparent;
   --ambient-3: transparent;
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
 html[data-theme="minimal"] body,
 body[data-ui="minimal"] {
   background: #000;
+  overflow: hidden;
+  height: 100dvh;
 }
 
 html[data-theme="minimal"] .ambient {
@@ -3732,11 +3744,19 @@ body[data-ui="minimal"] .minimal-topbar {
   background: transparent;
   border: 0;
   padding: 16px 20px;
+  z-index: 50;
+  animation: none !important;
+  transform: none !important;
+  pointer-events: auto;
 }
 
 body[data-ui="minimal"] .minimal-brand {
   background: transparent;
-  padding: 6px 10px;
+  padding: 8px 12px;
+  min-height: 44px;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
 }
 
 body[data-ui="minimal"] .minimal-brand .brand-name {
@@ -3744,15 +3764,45 @@ body[data-ui="minimal"] .minimal-brand .brand-name {
   letter-spacing: -0.02em;
 }
 
+body[data-ui="minimal"] .brand-version {
+  display: none;
+}
+
 body[data-ui="minimal"] .minimal-shell {
   display: block;
+  position: relative;
+  inset: auto;
+  overflow: visible;
   min-height: 100svh;
+  /* Boot fade-in leave-behind transforms make position:fixed dock clip. */
+  transform: none !important;
+  filter: none !important;
+  animation: none !important;
+  opacity: 1 !important;
+  z-index: 1;
+  pointer-events: none;
+}
+
+body[data-ui="minimal"] .orb-shell,
+body[data-ui="minimal"] .minimal-copy,
+body[data-ui="minimal"] .notice,
+body[data-ui="minimal"] .assistant-ephemeral,
+body[data-ui="minimal"] .agent-toast,
+body[data-ui="minimal"] .agent-confirm-modal {
+  pointer-events: auto;
 }
 
 body[data-ui="minimal"] .minimal-desk {
-  min-height: 100svh;
+  min-height: 100dvh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: visible;
+}
+
+body[data-ui="minimal"] .live-desk,
+body[data-ui="minimal"] .voice-stage {
+  overflow: visible;
 }
 
 body[data-ui="minimal"] .minimal-stage {
@@ -3822,18 +3872,28 @@ body[data-ui="minimal"] .assistant-ephemeral {
   min-height: 1.5em;
 }
 
-/* Bottom composer */
+/* Bottom call chrome */
 body[data-ui="minimal"] .minimal-dock {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 0 16px calc(20px + env(safe-area-inset-bottom));
+  padding: 0 16px max(20px, env(safe-area-inset-bottom));
   background: transparent;
   border: 0;
   display: flex;
   justify-content: center;
+  align-items: flex-end;
   z-index: 30;
+  transform: none !important;
+  animation: none !important;
+  opacity: 1 !important;
+  min-height: 104px;
+  pointer-events: none;
+}
+body[data-ui="minimal"] .minimal-dock .call-chrome,
+body[data-ui="minimal"] .minimal-dock .call-btn {
+  pointer-events: auto;
 }
 
 .composer-bar {
@@ -4272,6 +4332,8 @@ body[data-ui="minimal"] .transcript-drawer {
 body[data-ui="minimal"] .backchannel-badge {
   background: rgba(107, 140, 255, 0.2);
   color: #c8d4ff;
+  opacity: 0;
+  animation: none;
   transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
 }
 
@@ -4976,7 +5038,9 @@ body[data-ui="minimal"] .settings-sheet.sheet {
   transition: opacity 600ms var(--ease-out), visibility 600ms;
 }
 
-.boot-splash.is-hidden {
+.boot-splash.is-hidden,
+.boot-splash[hidden] {
+  display: none !important;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -5620,7 +5684,8 @@ body[data-boot="loading"] .control-dock {
 body[data-boot="ready"] .topbar,
 body[data-boot="ready"] .signal-shell,
 body[data-boot="ready"] .control-dock {
-  animation: boot-fade-in 600ms var(--ease-out) both;
+  animation: none;
+  opacity: 1;
 }
 
 /* =========================================================================
@@ -6098,3 +6163,168 @@ body:has(.settings-sheet[data-open="true"])::before {
     transition: none !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Default call surface (bloub + Mute / End / Settings)
+   --------------------------------------------------------------------------- */
+
+body[data-ui="minimal"] .minimal-topbar {
+  pointer-events: none;
+}
+body[data-ui="minimal"] .minimal-topbar .brand {
+  pointer-events: auto;
+  opacity: 0.55;
+}
+body[data-ui="minimal"] .brand-version,
+body[data-ui="minimal"] .top-actions {
+  display: none !important;
+}
+body[data-ui="minimal"] .context-rail {
+  display: none !important;
+}
+body.show-rail[data-ui="minimal"] .context-rail {
+  display: grid !important;
+}
+body[data-ui="minimal"] .minimal-shell {
+  grid-template-columns: 1fr;
+  inset: auto;
+  overflow: visible;
+}
+
+.bloub-orb {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+#bloubOrb.is-dimmed {
+  opacity: 0.42;
+  filter: grayscale(0.25);
+  transition: opacity 280ms ease, filter 280ms ease;
+}
+body[data-ui="minimal"] .orb-shell {
+  filter: none;
+  background: transparent;
+}
+body[data-ui="minimal"] .orb-shell::after {
+  display: none;
+}
+body[data-ui="minimal"] .orb-aura,
+body[data-ui="minimal"] .orb-glow,
+body[data-ui="minimal"] .orb-ring {
+  display: none;
+}
+body[data-ui="minimal"] .orb-ring.barge-in {
+  display: block;
+}
+
+.call-chrome {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 28px;
+  width: min(420px, 100%);
+  padding: 8px 12px 4px;
+}
+.call-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #f4f4f2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  min-width: 72px;
+}
+.call-btn .morph-host,
+.call-btn .morph-host svg {
+  width: 28px;
+  height: 28px;
+  display: block;
+}
+.call-mute,
+.call-settings,
+.call-end {
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+  position: relative;
+}
+.call-mute,
+.call-settings {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4f4f2;
+}
+.call-end {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #e11d48;
+  color: #fff;
+  box-shadow: 0 10px 28px rgba(225, 29, 72, 0.35);
+}
+.call-btn-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.call-btn:active {
+  transform: scale(0.94);
+}
+.call-mute.muted,
+.call-settings[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.18);
+}
+body[data-boot="loading"] .call-chrome {
+  opacity: 0;
+}
+body[data-boot="ready"] .call-chrome {
+  opacity: 1;
+  transition: opacity 400ms ease;
+}
+
+details.settings-lab {
+  margin: 8px 0 24px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  /* Settings body is a grid. Default min-height:auto is required so the
+     closed summary is not crushed to the border width (~2px). */
+  min-height: min-content;
+  align-self: start;
+  width: 100%;
+  overflow: visible;
+}
+details.settings-lab > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 18px;
+}
+details.settings-lab > summary::-webkit-details-marker {
+  display: none;
+}
+details.settings-lab .settings-lab-summary .settings-section-title {
+  margin: 0;
+}
+details.settings-lab .settings-lab-hint {
+  font-size: 0.8rem;
+  color: var(--fg-subtle, rgba(244, 244, 242, 0.55));
+}
+details.settings-lab[open] > summary {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+details.settings-lab .settings-section {
+  padding-inline: 8px;
+}
+
+

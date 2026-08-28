@@ -8,7 +8,7 @@
  * Architecture:
  *   - `socket` is the binary WebSocket to /v1/realtime on the gateway.
  *   - `audio` is the AudioSession (mic capture + playback worklets).
- *   - `visualizer` is the canvas orb renderer.
+ *   - `visualizer` is the bloub orb (x.ai-style face; not affiliated with xAI).
  *   - `transcript` is the in-memory TranscriptLog.
  *   - `telemetry` is the ConnectionTelemetry rolling window.
  *   - `settings` is the persisted UI preferences.
@@ -87,6 +87,13 @@ import {
 } from "./speech-tts.js";
 import { exportMemory, saveMemoryItem } from "./memory-client.js";
 import { fetchTtsStatus, piperInstallUi, speakOpenLive } from "./tts-client.js";
+import {
+  allowInboundProviderPcm,
+  demoAllowsFormant,
+  isRealTtsReady,
+} from "./demo-voice.js";
+import { installCallMorphs } from "./call-controls.js";
+import { isGestureGatedMicError, shouldAutoJoinCall } from "./call-entry.js";
 import {
   BACKCHANNEL_TOKENS,
   identityReply,
@@ -176,6 +183,10 @@ let transcriptVisible = false;
 let lastServerSequence = 0;
 let reconnectAttempt = 0;
 let conversationActive = false;
+let joining = false;
+/** Bumped to cancel an in-flight auto-join when the user hits End. */
+let joinEpoch = 0;
+let bootSplashDismissed = false;
 let microphoneActive = false;
 let userEnded = true;
 let pttHeld = false;
@@ -186,6 +197,11 @@ let mode = VoiceMode.IDLE;
 /** Bumped on every barge-in / cancel so in-flight agent + TTS bail out. */
 let assistantTurnId = 0;
 let lastBargeInAt = 0;
+let lastSpokenFinal = "";
+let lastSpokenAt = 0;
+/** Tracks whether we've already received+played streaming PCM for the current
+ * generation. When true, speakAssistant is skipped to avoid double audio. */
+let receivedMediaForGeneration = false;
 
 let settings = loadSettings();
 /** @type {ReturnType<typeof loadSetup>} */
@@ -243,8 +259,16 @@ const BUILTIN_PROVIDER_DETAILS = {
   custom: { id: "custom", name: "Custom", base_url: "http://127.0.0.1:8000/v1", default_model: "default", models: [], free_tier: true, description: "Any OpenAI-compatible base URL. Enter base URL, then pick or type a model id." },
 };
 
-const visualizer = new VoiceVisualizer(controls.voiceOrb);
+const visualizer = new VoiceVisualizer(controls.bloubOrb || controls.voiceOrb);
 visualizer.setMotionScale(settings.motionScale);
+
+/** Morphicons on Mute / End / Settings. Installed after DOM listeners. */
+let callMorphs = {
+  setMuted() {},
+  setSettingsOpen() {},
+};
+/** Piper (or other neural TTS) is ready — demo path stays silent until then. */
+let realTtsReady = false;
 
 const mediaCapture = new MediaCaptureSession({
   onState: handleCaptureState,
@@ -411,7 +435,7 @@ controls.settings?.addEventListener("click", () => {
   if (!controls.settingsVoice?.options?.length) {
     fillVoiceSelect(voices.length ? voices : OFFLINE_VOICES);
   }
-  toggleSettings();
+  setCallSettingsOpen();
   // Scroll settings body to top on open so the user always sees the first section.
   const settingsBody = document.querySelector(".settings-body");
   if (settingsBody) {
@@ -424,7 +448,7 @@ controls.settings?.addEventListener("click", () => {
 });
 controls.closeSettings?.addEventListener("click", () => {
   playClick("soft");
-  toggleSettings(false);
+  setCallSettingsOpen(false);
 });
 controls.backchannels?.addEventListener("change", (event) =>
   persistField("backchannels", event.target.value, /* reconfigure */ true),
@@ -519,10 +543,6 @@ controls.debug?.addEventListener("click", () => {
   playClick("soft");
   toggleDiagnostics();
 });
-controls.brand?.addEventListener("click", () => {
-  playClick("soft");
-  toggleDiagnostics();
-});
 controls.closeDebug?.addEventListener("click", () => {
   playClick("soft");
   toggleDiagnostics(false);
@@ -592,13 +612,34 @@ controls.composerInput?.addEventListener("keydown", (event) => {
   playClick("confirm");
   void submitComposerText();
 });
-// Prime Web Audio on first pointer anywhere in the surface.
+// Prime Web Audio on first pointer. If auto-join was gesture-gated,
+// the same tap starts the call — GPT-Live is a call, not a Start button.
+// Prime Web Audio on first pointer. Empty-stage taps start the call;
+// chrome (Mute / End / Settings) keeps its own handlers.
 document.addEventListener(
   "pointerdown",
-  () => {
+  (event) => {
     unlockUiAudio();
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (
+      target.closest(
+        "button, a, input, select, textarea, .sheet, .setup-wizard, .diagnostics, .onboarding",
+      )
+    ) {
+      return;
+    }
+    if (
+      shouldAutoJoinCall({
+        conversationActive,
+        joining,
+        setupOpen: isInteractionBlocked(),
+      })
+    ) {
+      void beginConversation();
+    }
   },
-  { once: true, passive: true },
+  { passive: true },
 );
 wireUiSoundToggle();
 
@@ -625,7 +666,7 @@ installShortcuts({
   toggleMute: handleMuteToggle,
   toggleTranscript: () => toggleTranscript(),
   toggleDiagnostics: () => toggleDiagnostics(),
-  toggleSettings: () => toggleSettings(),
+  toggleSettings: () => setCallSettingsOpen(),
   toggleInstructions: () => {
     const open = toggleInstructions();
     if (open) renderInstructionsPanel(customInstructions, onInstructionAxisChange);
@@ -649,6 +690,8 @@ installShortcuts({
   endConversation: endConversation,
   closeOverlays: () => {
     closeOverlays();
+    callMorphs.setSettingsOpen(false);
+    controls.settings?.setAttribute("aria-expanded", "false");
   },
   showOnboarding: () => setOnboardingOpen(true),
 });
@@ -678,8 +721,9 @@ applySettingsForm();
 applySetupToSettingsForm();
 applySessionCapFromSettings();
 refreshFullscreenToggle();
-visualizer.setMode(VoiceMode.IDLE);
-resetExperience();
+mode = VoiceMode.LISTENING;
+visualizer.setMode(VoiceMode.LISTENING);
+setVoiceMode(VoiceMode.LISTENING);
 renderVoiceList(voices, selectedVoice.id, onVoiceSelected);
 renderModeList(MODES, selectedModeId, onModeSelected);
 setVoiceBadge(selectedVoice.glyph);
@@ -691,33 +735,63 @@ refreshInstructionsBadge();
 // shows pending tasks without waiting for a new acknowledgement.
 initializeTaskRail();
 
-// Load LLM provider catalog + sync gateway config (non-blocking).
-void bootstrapLlmUi().then(() => {
-  // Dismiss the boot splash once the provider catalog is loaded.
-  dismissBootSplash();
-});
-// Paint Settings → Runtime as soon as the page loads (don't wait for Start).
+// First paint is the call. Do not wait on catalog fetch or a brand animation.
+dismissBootSplash();
+void bootstrapLlmUi();
 void refreshRuntimeStatus();
 
-if (!isSetupComplete()) {
-  openSetupWizard({ force: true });
-} else {
-  setSetupOpen(false);
-  if (!settings.onboardingDismissed) {
-    setOnboardingOpen(true);
-  }
-  void pushLlmConfig(setup).catch(() => {});
-}
-
-// Failsafe: dismiss splash after 3s even if bootstrapLlmUi hangs.
-setTimeout(dismissBootSplash, 3000);
+setSetupOpen(false);
+void pushLlmConfig(setup).catch(() => {});
+void refreshTtsWarmup();
+window.setInterval(() => {
+  void refreshTtsWarmup();
+}, 4000);
 
 // Install ripple click feedback on all interactive elements.
 installRippleFeedback();
+callMorphs = installCallMorphs();
+
+if (
+  shouldAutoJoinCall({
+    conversationActive,
+    joining,
+    setupOpen: false,
+  })
+) {
+  void beginConversation({ auto: true });
+}
 
 /* ---------------------------------------------------------------------------
    Primary action / conversation lifecycle
    --------------------------------------------------------------------------- */
+
+function setCallSettingsOpen(force) {
+  const next = toggleSettings(force);
+  callMorphs.setSettingsOpen(next);
+  controls.settings?.setAttribute("aria-expanded", String(next));
+  return next;
+}
+
+document.addEventListener(
+  "click",
+  (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.closest("#brand")) return;
+    event.preventDefault();
+    playClick("soft");
+    setCallSettingsOpen();
+  },
+  true,
+);
+
+async function refreshTtsWarmup() {
+  try {
+    const status = await fetchTtsStatus();
+    realTtsReady = isRealTtsReady(status);
+  } catch {
+    realTtsReady = false;
+  }
+}
 
 function isInteractionBlocked() {
   return document.body.classList.contains("setup-open");
@@ -750,6 +824,7 @@ function handlePttEnd() {
 }
 
 async function handlePrimaryAction() {
+  if (joining) return;
   if (isInteractionBlocked()) {
     showSetupRequiredNotice();
     return;
@@ -771,6 +846,7 @@ function handleMuteToggle() {
     audio.stopMicrophone();
     microphoneActive = false;
     setConversationActive(true, false, settings.entryMode === "ptt");
+    callMorphs.setMuted(true);
     transition(VoiceMode.MUTED);
     stopSpeechRecognition();
     return;
@@ -778,13 +854,21 @@ function handleMuteToggle() {
   audio.startMicrophone().then(() => {
     microphoneActive = true;
     setConversationActive(true, true, settings.entryMode === "ptt");
+    callMorphs.setMuted(false);
     hideNotice();
     transition(VoiceMode.LISTENING);
     startSpeechRecognition();
   }).catch((error) => showNotice(microphoneErrorMessage(error)));
 }
 
-async function beginConversation() {
+async function beginConversation({ auto = false } = {}) {
+  if (conversationActive || joining) return;
+  if (isInteractionBlocked()) {
+    if (!auto) showSetupRequiredNotice();
+    return;
+  }
+  joining = true;
+  const epoch = ++joinEpoch;
   userEnded = false;
   reconnectAttempt = 0;
   mediaTimeUs = 0;
@@ -800,8 +884,10 @@ async function beginConversation() {
   setAssistantText("");
   closeOverlays();
   hideNotice();
-  setStarting(true);
-  transition(VoiceMode.STARTING);
+  if (!auto) {
+    setStarting(true);
+    transition(VoiceMode.STARTING);
+  }
   try {
     setup = loadSetup();
     await pushLlmConfig(setup).catch(() => {});
@@ -838,8 +924,10 @@ async function beginConversation() {
       addTimeline("microphone", `Capture started at ${sampleRate} Hz`);
     }
 
+    if (epoch !== joinEpoch) return;
     conversationActive = true;
     setConversationActive(true, true, settings.entryMode === "ptt");
+    callMorphs.setMuted(false);
     transition(VoiceMode.LISTENING);
     startSpeechRecognition();
     transcript.append("system", "Conversation started.");
@@ -849,6 +937,7 @@ async function beginConversation() {
       setQuotaPill(quota.remainingSeconds(), "ok");
     }
   } catch (error) {
+    if (epoch !== joinEpoch) return;
     userEnded = true;
     fallbackInProgress = false;
     closeWebRtcConnection();
@@ -858,16 +947,29 @@ async function beginConversation() {
     microphoneActive = false;
     conversationActive = false;
     setConversationActive(false);
-    showNotice(microphoneErrorMessage(error));
-    transition(VoiceMode.ERROR);
-    addTimeline("start_error", error.message);
+    if (auto && isGestureGatedMicError(error)) {
+      // Browser needs a tap. Stay on the call surface; first pointer starts it.
+      transition(VoiceMode.IDLE);
+    } else {
+      showNotice(microphoneErrorMessage(error));
+      transition(VoiceMode.ERROR);
+      addTimeline("start_error", error.message);
+    }
   } finally {
-    setStarting(false);
+    if (epoch === joinEpoch) {
+      joining = false;
+      setStarting(false);
+    }
   }
 }
 
 function endConversation() {
-  if (!conversationActive && mode === VoiceMode.IDLE) return;
+  joinEpoch += 1;
+  joining = false;
+  if (!conversationActive && mode === VoiceMode.IDLE) {
+    setStarting(false);
+    return;
+  }
   userEnded = true;
   conversationActive = false;
   microphoneActive = false;
@@ -894,6 +996,7 @@ function endConversation() {
   renderTranscript(transcript.entries);
   resetExperience();
   visualizer.setMode(VoiceMode.IDLE);
+  callMorphs.setMuted(false);
   telemetry.reset();
   addTimeline("session", "Conversation ended");
 }
@@ -1927,12 +2030,6 @@ function hardInterruptAssistant(source = "barge-in") {
   }, 320);
 }
 
-let lastSpokenFinal = "";
-let lastSpokenAt = 0;
-/** Tracks whether we've already received+played streaming PCM for the current
- * generation. When true, speakAssistant is skipped to avoid double audio. */
-let receivedMediaForGeneration = false;
-
 /** Control message types that should be buffered + retried during a transport
  * fallback transition (when neither WebRTC DC nor WebSocket is ready yet).
  * Hoisted to module level so the Set isn't recreated on every sendControl call. */
@@ -1949,11 +2046,20 @@ const CRITICAL_CONTROL_TYPES = new Set([
 
 function handleMedia(packet) {
   observeServerSequence(packet.sequence);
-  // Prefer the gateway's native TTS pipeline (Piper/formant) when it is
-  // actively streaming PCM. This is more reliable than browser TTS alone
-  // and avoids the intermittent silence/hang issues seen on Windows
-  // Chrome/Edge with speechSynthesis.
+  // Prefer the gateway's native TTS pipeline (Piper) when it is
+  // actively streaming PCM. Mock formant frames are dropped on the
+  // demo path unless the user explicitly selected engine=formant.
   if (packet?.pcm?.length > 0 && audio) {
+    if (!allowInboundProviderPcm(loadSetup(), activeProvider)) {
+      if (!handleMedia._droppedMock) {
+        handleMedia._droppedMock = true;
+        addTimeline(
+          "tts",
+          "Ignored mock formant PCM — demo path uses Piper or silence",
+        );
+      }
+      return;
+    }
     receivedMediaForGeneration = true;
     audio.enqueue(packet).catch((error) => {
       console.warn("Failed to enqueue server PCM:", error);
@@ -2146,7 +2252,7 @@ function handleControl(envelope) {
     assistantText = "";
     transcript.finalizeByGeneration(envelope.generation_id, finalText);
     renderTranscript(transcript.entries);
-    // Robust TTS: prefer gateway Piper/formant PCM, fall back to browser.
+    // Robust TTS: Piper (or configured engine). Auto never pads with formant.
     setup = loadSetup();
     const isSoftAck = /^(mm-?hmm|mhmm|mhm)\.?$/i.test(finalText);
     // Dedupe: gateway can emit the same final twice under race conditions.
@@ -2775,25 +2881,11 @@ function wireSetupWizard() {
 }
 
 function wireUiSoundToggle() {
-  const host = document.querySelector("#settingsPanel .sheet-body");
-  if (!host || document.querySelector("#uiSoundToggle")) return;
-  const fieldset = document.createElement("fieldset");
-  fieldset.className = "sheet-group";
-  fieldset.innerHTML = `
-    <legend>Feel</legend>
-    <label class="checkbox-row" for="uiSoundToggle">
-      <input id="uiSoundToggle" type="checkbox" ${isUiSoundMuted() ? "" : "checked"} />
-      <span>Tactile sounds (slider ticks, soft clicks)</span>
-    </label>
-    <p class="setup-hint">Subtle Web Audio feedback — never interrupts voice.</p>
-  `;
-  // Insert before Runtime if present, else append.
-  const runtime = [...host.querySelectorAll("fieldset")].find((f) =>
-    f.querySelector("legend")?.textContent?.includes("Runtime"),
-  );
-  if (runtime) host.insertBefore(fieldset, runtime);
-  else host.appendChild(fieldset);
-  document.querySelector("#uiSoundToggle")?.addEventListener("change", (event) => {
+  const toggle = document.querySelector("#uiSoundToggle");
+  if (!toggle || toggle.dataset.bound === "1") return;
+  toggle.dataset.bound = "1";
+  toggle.checked = !isUiSoundMuted();
+  toggle.addEventListener("change", (event) => {
     setUiSoundMuted(!event.target.checked);
     if (event.target.checked) {
       unlockUiAudio();
@@ -2929,21 +3021,42 @@ function wireSetupSettingsBindings() {
     void withLoading(controls.settingsProbeAgent, probeAgentFromForm("settings")),
   );
   controls.reopenSetup?.addEventListener("click", () => {
-    toggleSettings(false);
+    setCallSettingsOpen(false);
     openSetupWizard({ force: true });
+  });
+  controls.settingsCamera?.addEventListener("click", () => {
+    setCallSettingsOpen(false);
+    void toggleCamera();
+  });
+  controls.settingsScreen?.addEventListener("click", () => {
+    setCallSettingsOpen(false);
+    void toggleScreenShare();
+  });
+  controls.settingsTranscript?.addEventListener("click", () => {
+    setCallSettingsOpen(false);
+    toggleTranscript(true);
+  });
+  controls.settingsModes?.addEventListener("click", () => {
+    setCallSettingsOpen(false);
+    toggleModePicker(true);
+  });
+  controls.settingsTasks?.addEventListener("click", () => {
+    setCallSettingsOpen(false);
+    setTaskRailVisible(true);
+  });
+  controls.settingsDiagnostics?.addEventListener("click", () => {
+    setCallSettingsOpen(false);
+    toggleDiagnostics(true);
   });
 }
 
 async function bootstrapLlmUi() {
-  setBootStatus("Connecting to gateway…");
   try {
     const data = await fetchLlmProviders();
     llmProviders = data.providers || [];
   } catch {
     llmProviders = [];
-    setBootStatus("Gateway offline — using defaults…");
   }
-  setBootStatus(llmProviders.length ? "Loading voices…" : "Gateway offline — using defaults…");
   fillProviderSelects();
   // Profile roster (always fill, even if gateway voices fail).
   fillVoiceSelect(OFFLINE_VOICES);
@@ -3765,9 +3878,9 @@ function speechOpts(extra = {}) {
 }
 
 /**
- * Speak assistant text with the best available engine.
- * Tries gateway TTS (Piper/formant) first, then browser TTS as fallback.
- * Handles failures gracefully and transitions back to listening when done.
+ * Speak assistant text with the configured engine.
+ * Auto/Piper: neural TTS only — silence + on-screen text if Piper is not ready.
+ * Formant and browser run only when the user explicitly selected them.
  */
 async function speakAssistant(text, speakTurn, isSoftAck = false) {
   const localSetup = loadSetup();
@@ -3799,8 +3912,8 @@ async function speakAssistant(text, speakTurn, isSoftAck = false) {
     }
   }
 
-  // Fallback to browser TTS if gateway TTS is disabled or failed.
-  if (!gatewayOk && localSetup.browserTts !== false && browserTtsAvailable()) {
+  // Browser TTS only when the user picked that engine — never as an auto pad.
+  if (!gatewayOk && ttsEngine === "browser" && browserTtsAvailable()) {
     try {
       const fullySpoken = await speakBrowser(
         text,
@@ -3820,9 +3933,8 @@ async function speakAssistant(text, speakTurn, isSoftAck = false) {
     }
   }
 
-  // If neither engine could speak, at least keep the conversation alive.
-  if (!gatewayOk && (localSetup.browserTts === false || !browserTtsAvailable())) {
-    addTimeline("tts", "No TTS engine available; text shown only");
+  if (!gatewayOk && ttsEngine !== "browser") {
+    addTimeline("tts", "No neural TTS yet; showing text only");
   }
 
   // Transition back to listening when appropriate.
@@ -3886,8 +3998,8 @@ function showPiperInstallModal(ui) {
 }
 
 /**
- * Always try to speak assistant text.
- * Prefers open-source Piper → formant → browser.
+ * Speak assistant text for previews / explicit out-loud requests.
+ * Auto never pads with formant or browser TTS.
  * @param {string} text
  * @param {object} [extra]
  * @returns {Promise<boolean>}
@@ -3922,7 +4034,6 @@ async function speakAssistantOutLoud(text, extra = {}) {
     }
   }
 
-  // Prefer open-source Piper → formant → browser (browser quality is last resort).
   const spoken = await speakOpenLive(line, {
     voiceId: setup.voiceId || selectedVoice?.id,
     voiceURI: setup.browserVoiceURI || null,
@@ -3934,14 +4045,18 @@ async function speakAssistantOutLoud(text, extra = {}) {
   const ok = !!spoken.ok;
   if (ok) {
     hideNotice();
-  } else if (spoken.piper && !spoken.piper.available) {
-    const ui = piperInstallUi({ piper: spoken.piper });
-    showPiperInstallModal(ui);
+  } else if (
+    setup.ttsEngine === "piper" &&
+    spoken.piper &&
+    !spoken.piper.available &&
+    !speakAssistantOutLoud._shownInstall
+  ) {
+    speakAssistantOutLoud._shownInstall = true;
+    showPiperInstallModal(piperInstallUi({ piper: spoken.piper }));
+  } else if ((setup.ttsEngine || "auto") === "auto") {
+    hideNotice();
   } else {
-    showNotice(
-      spoken.error ||
-        "Speech failed. Settings → TTS: try Formant or install Piper (open-source).",
-    );
+    showNotice(spoken.error || "Speech failed.");
   }
 
   if (conversationActive && microphoneActive && !userEnded) {
@@ -4037,7 +4152,8 @@ async function previewSelectedVoice() {
       setup = saveSetup({ browserVoiceURI: uri });
       if (controls.settingsSystemVoice) controls.settingsSystemVoice.value = uri;
     }
-    if (setup.browserTts !== false && browserTtsAvailable() && catalog.length) {
+    const engine = setup.ttsEngine || "auto";
+    if (engine === "browser" && setup.browserTts !== false && browserTtsAvailable() && catalog.length) {
       showNotice(`Playing: ${catalog.find((c) => c.id === uri)?.name || "system voice"}…`);
       stopBrowserSpeech();
       const ok = await speakBrowser(
@@ -4049,15 +4165,26 @@ async function previewSelectedVoice() {
         return;
       }
     }
-    // Always offer formant backup on preview failure.
-    showNotice("Browser voice failed — playing backup formant voice…");
-    const data = await previewVoice(id, line);
-    await playPcmBase64(data.pcm_base64, data.sample_rate || 24000);
+    const spoken = await speakOpenLive(line, {
+      voiceId: id,
+      voiceURI: uri || null,
+      ttsEngine: engine,
+    });
+    if (spoken.ok) {
+      hideNotice();
+      return;
+    }
+    if (demoAllowsFormant(setup)) {
+      showNotice("Playing formant preview…");
+      const data = await previewVoice(id, line);
+      await playPcmBase64(data.pcm_base64, data.sample_rate || 24000);
+      hideNotice();
+      return;
+    }
     hideNotice();
     showNotice(
-      catalog.length
-        ? "Backup voice works. For natural speech, pick a System voice and try Preview again (Edge works best)."
-        : "No system voices found. Install Windows Speech voices, or keep using backup formant voice.",
+      spoken.error ||
+        "Preview silent until Piper is installed. Settings → TTS can switch to Formant.",
     );
   } catch (e) {
     showNotice(e?.message || "Preview failed");
@@ -5008,55 +5135,14 @@ function microphoneErrorMessage(error) {
    Boot splash lifecycle + ripple click feedback (v26.7.16 UI revamp)
    --------------------------------------------------------------------------- */
 
-let bootSplashDismissed = false;
-window.__openliveBootStart = performance.now();
-
 /**
- * Fade out the boot/splash overlay and mark the app as ready.
- * Called after bootstrapLlmUi completes or a 3s failsafe timeout.
- */
-/**
- * Fade out the boot/splash overlay and mark the app shell as ready.
- * Boot sequence: white sphere scales in, then after 1s "Openlive" slides
- * out and fades before the splash is removed. The splash stays for at
- * least 2.4s so the brand animation can complete.
+ * The call surface is first paint. Keep the boot flag in sync if a host
+ * still sets data-boot=loading before this module runs.
  */
 function dismissBootSplash() {
   if (bootSplashDismissed) return;
   bootSplashDismissed = true;
-
-  // Keep the splash visible long enough for the brand animation to play:
-  // 1s delay + 1.2s slide/fade = ~2.2s minimum. Add a small buffer.
-  const splashStart = window.__openliveBootStart || performance.now();
-  const elapsed = performance.now() - splashStart;
-  const minDuration = 2400;
-  const remaining = Math.max(0, minDuration - elapsed);
-
-  const doDismiss = () => {
-    const splash = document.getElementById("bootSplash");
-    if (splash) {
-      splash.classList.add("is-hidden");
-      setTimeout(() => {
-        if (splash.parentNode) splash.parentNode.removeChild(splash);
-      }, 900);
-    }
-    document.body.dataset.boot = "ready";
-  };
-
-  if (remaining <= 0) {
-    doDismiss();
-  } else {
-    setTimeout(doDismiss, remaining);
-  }
-}
-
-/**
- * Update the boot status text shown during splash.
- * @param {string} text
- */
-function setBootStatus(text) {
-  const el = document.getElementById("bootStatus");
-  if (el) el.textContent = text;
+  document.body.dataset.boot = "ready";
 }
 
 /**

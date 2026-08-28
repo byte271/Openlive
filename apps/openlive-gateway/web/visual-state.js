@@ -28,27 +28,27 @@ export const VoiceMode = Object.freeze({
 
 const PRESENTATIONS = Object.freeze({
   idle: {
-    label: "Ready when you are",
+    label: "Tap to talk",
     title: "OpenLive",
-    detail: "Tap the mic or press Space to start.",
+    detail: "I'll listen as soon as you start.",
     tone: "neutral",
   },
   starting: {
-    label: "Connecting…",
-    title: "Opening channel",
-    detail: "Opening the voice channel.",
+    label: "Listening…",
+    title: "Opening",
+    detail: "Just a moment.",
     tone: "neutral",
   },
   listening: {
     label: "Listening",
     title: "Your turn",
-    detail: "I'm listening — jump in anytime.",
+    detail: "Speak freely.",
     tone: "input",
   },
   thinking: {
-    label: "Looking it up",
+    label: "Thinking",
     title: "One moment",
-    detail: "Checking that for you — keep talking if you want.",
+    detail: "Keep talking — I'll catch up.",
     tone: "neutral",
   },
   speaking: {
@@ -58,7 +58,7 @@ const PRESENTATIONS = Object.freeze({
     tone: "output",
   },
   yielding: {
-    label: "Yielding",
+    label: "Listening",
     title: "All yours",
     detail: "You go — I'm listening.",
     tone: "input",

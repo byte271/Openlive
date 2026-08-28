@@ -299,9 +299,9 @@ async fn tts_status() -> Json<serde_json::Value> {
     let st = piper_status(DEFAULT_PIPER_VOICE);
     Json(serde_json::json!({
         "piper": st,
-        "fallback": "formant",
+        "fallback": "silence until Piper (formant only if engine=formant)",
         "browser_tts": "optional client-side",
-        "preferred": if st.available { "piper" } else { "formant" },
+        "preferred": if st.available { "piper" } else { "silence" },
     }))
 }
 
@@ -334,7 +334,7 @@ async fn tts_speak(
         .and_then(serde_json::Value::as_str)
         .unwrap_or("auto");
 
-    // Prefer Piper when installed; otherwise formant.
+    // Prefer Piper. Auto never falls through to formant (demo path = zero fake voice).
     if prefer != "formant" {
         match piper_synthesize(text, voice_id) {
             Ok((pcm, rate)) => {
@@ -353,19 +353,16 @@ async fn tts_speak(
                     .into_response();
             }
             Err(e) => {
-                if prefer == "piper" {
-                    let st = piper_status(voice_id);
-                    return (
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        Json(serde_json::json!({
-                            "error": e,
-                            "piper": st,
-                            "hint": "Copy install_command_windows or install_command_unix from /v1/tts/status",
-                        })),
-                    )
-                        .into_response();
-                }
-                // fall through to formant
+                let st = piper_status(voice_id);
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(serde_json::json!({
+                        "error": e,
+                        "piper": st,
+                        "hint": "Copy install_command_windows or install_command_unix from /v1/tts/status. Formant is only used when engine=formant.",
+                    })),
+                )
+                    .into_response();
             }
         }
     }
@@ -1288,7 +1285,7 @@ async fn sandbox_test_run(State(state): State<AppState>, headers: HeaderMap) -> 
     let read = sandbox_read_file(path);
     tests.push(serde_json::json!({
         "name": "sandbox_write_read",
-        "ok": write.is_ok() && read.as_ref().map(|t| t.contains("openlive-ok")).unwrap_or(false),
+        "ok": write.is_ok() && read.as_ref().is_ok_and(|t| t.contains("openlive-ok")),
         "detail": format!("{:?} / {:?}", write, read.as_ref().map(|s| s.chars().take(40).collect::<String>())),
     }));
     // 2. Calculator / identity via agent
@@ -1345,7 +1342,7 @@ async fn sandbox_test_run(State(state): State<AppState>, headers: HeaderMap) -> 
     let after = sandbox_read_file(cpath);
     tests.push(serde_json::json!({
         "name": "pending_confirm_write",
-        "ok": approved.is_ok() && after.as_ref().map(|t| t.contains("v2-approved")).unwrap_or(false),
+        "ok": approved.is_ok() && after.as_ref().is_ok_and(|t| t.contains("v2-approved")),
         "detail": format!("{:?} / {:?}", approved, after),
     }));
     // 5. Lab note + browse wiki summary
@@ -1361,7 +1358,7 @@ async fn sandbox_test_run(State(state): State<AppState>, headers: HeaderMap) -> 
         .await;
     tests.push(serde_json::json!({
         "name": "browse_wikipedia",
-        "ok": browse.as_ref().map(|(t, _)| t.to_ascii_lowercase().contains("agent")).unwrap_or(false),
+        "ok": browse.as_ref().is_ok_and(|(t, _)| t.to_ascii_lowercase().contains("agent")),
         "detail": browse.as_ref().map_or_else(std::clone::Clone::clone, |(t, c)| format!("{} @ {}", t.chars().take(80).collect::<String>(), c.url)),
     }));
     // 6. Durable profile
@@ -1739,7 +1736,7 @@ async fn list_voices(State(state): State<AppState>) -> Json<serde_json::Value> {
         "active": active,
         "engine": if piper.available { "piper+formant" } else { "openlive-formant" },
         "piper": piper,
-        "note": "Prefer open-source Piper when installed; formant is always available offline."
+        "note": "Prefer Piper when installed. Formant is available only when engine=formant."
     }))
 }
 
@@ -2000,20 +1997,19 @@ async fn session_transcript(
                             }));
                         }
                     }
-                    "user_transcript_delta" => {
+                    "user_transcript_delta"
                         if payload
                             .get("is_final")
                             .and_then(serde_json::Value::as_bool)
-                            .unwrap_or(false)
-                        {
-                            if let Some(text) = payload.get("text").and_then(|t| t.as_str()) {
-                                turns.push(serde_json::json!({
-                                    "role": "user",
-                                    "text": text,
-                                    "sequence": row.sequence,
-                                    "event_id": row.event_id,
-                                }));
-                            }
+                            .unwrap_or(false) =>
+                    {
+                        if let Some(text) = payload.get("text").and_then(|t| t.as_str()) {
+                            turns.push(serde_json::json!({
+                                "role": "user",
+                                "text": text,
+                                "sequence": row.sequence,
+                                "event_id": row.event_id,
+                            }));
                         }
                     }
                     _ => {}
@@ -2390,6 +2386,5 @@ fn feature_flags(state: &AppState) -> serde_json::Value {
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
-        .unwrap_or(0)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }

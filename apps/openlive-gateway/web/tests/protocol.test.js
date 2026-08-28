@@ -253,6 +253,8 @@ test("jitter target expands on loss and recovers after stable playout", () => {
    --------------------------------------------------------------------------- */
 
 test("voice presentation keeps live states concise and distinct", () => {
+  assert.equal(voicePresentation(VoiceMode.IDLE).label, "Tap to talk");
+  assert.equal(voicePresentation(VoiceMode.IDLE).detail, "I'll listen as soon as you start.");
   assert.equal(voicePresentation(VoiceMode.LISTENING).label, "Listening");
   assert.equal(voicePresentation(VoiceMode.SPEAKING).label, "Speaking");
   assert.notEqual(
@@ -272,7 +274,7 @@ test("voice presentation keeps live states concise and distinct", () => {
 test("v1.2 YIELDING mode is distinct from INTERRUPTED and LISTENING", () => {
   assert.notEqual(VoiceMode.YIELDING, VoiceMode.INTERRUPTED);
   assert.notEqual(VoiceMode.YIELDING, VoiceMode.LISTENING);
-  assert.equal(voicePresentation(VoiceMode.YIELDING).label, "Yielding");
+  assert.equal(voicePresentation(VoiceMode.YIELDING).label, "Listening");
   // YIELDING gets a slightly higher input weight than LISTENING so the orb
   // visibly reacts to the user's voice even while output is being ducked.
   assert.ok(
@@ -541,6 +543,7 @@ test("clearSettings is safe to call even without localStorage", () => {
 test("default theme is minimal black for v26.7.16", () => {
   assert.equal(DEFAULT_SETTINGS.theme, "minimal");
   assert.equal(DEFAULT_SETTINGS.backchannels, "natural");
+  assert.equal(DEFAULT_SETTINGS.showLatency, false);
 });
 
 test("saveSettings accepts minimal theme", () => {

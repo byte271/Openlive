@@ -676,6 +676,7 @@ pub(crate) async fn checked_response(response: Response) -> Result<Vec<u8>, Stri
     ))
 }
 
+#[allow(clippy::result_large_err)]
 async fn send_state(
     sender: &mpsc::Sender<ProviderEmission>,
     generation_id: Uuid,
@@ -709,6 +710,7 @@ async fn send_pipeline_error(
     .await;
 }
 
+#[allow(clippy::result_large_err)]
 async fn send(
     sender: &mpsc::Sender<ProviderEmission>,
     generation_id: Option<Uuid>,

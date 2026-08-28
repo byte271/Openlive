@@ -15,7 +15,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   // Minimal black is the default live surface (v26.7.16).
   theme: "minimal",
   motionScale: 1,
-  showLatency: true,
+  showLatency: false,
   entryMode: "auto",
   backchannels: "natural",
   speedOverride: "auto",
