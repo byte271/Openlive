@@ -6295,7 +6295,12 @@ details.settings-lab {
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
-  overflow: hidden;
+  /* Settings body is a grid. Default min-height:auto is required so the
+     closed summary is not crushed to the border width (~2px). */
+  min-height: min-content;
+  align-self: start;
+  width: 100%;
+  overflow: visible;
 }
 details.settings-lab > summary {
   list-style: none;
