@@ -3744,11 +3744,19 @@ body[data-ui="minimal"] .minimal-topbar {
   background: transparent;
   border: 0;
   padding: 16px 20px;
+  z-index: 50;
+  animation: none !important;
+  transform: none !important;
+  pointer-events: auto;
 }
 
 body[data-ui="minimal"] .minimal-brand {
   background: transparent;
-  padding: 6px 10px;
+  padding: 8px 12px;
+  min-height: 44px;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
 }
 
 body[data-ui="minimal"] .minimal-brand .brand-name {
@@ -3771,6 +3779,17 @@ body[data-ui="minimal"] .minimal-shell {
   filter: none !important;
   animation: none !important;
   opacity: 1 !important;
+  z-index: 1;
+  pointer-events: none;
+}
+
+body[data-ui="minimal"] .orb-shell,
+body[data-ui="minimal"] .minimal-copy,
+body[data-ui="minimal"] .notice,
+body[data-ui="minimal"] .assistant-ephemeral,
+body[data-ui="minimal"] .agent-toast,
+body[data-ui="minimal"] .agent-confirm-modal {
+  pointer-events: auto;
 }
 
 body[data-ui="minimal"] .minimal-desk {
@@ -3865,7 +3884,7 @@ body[data-ui="minimal"] .minimal-dock {
   display: flex;
   justify-content: center;
   align-items: flex-end;
-  z-index: 80;
+  z-index: 30;
   transform: none !important;
   animation: none !important;
   opacity: 1 !important;

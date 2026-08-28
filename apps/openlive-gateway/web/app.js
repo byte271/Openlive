@@ -184,6 +184,8 @@ let lastServerSequence = 0;
 let reconnectAttempt = 0;
 let conversationActive = false;
 let joining = false;
+/** Bumped to cancel an in-flight auto-join when the user hits End. */
+let joinEpoch = 0;
 let microphoneActive = false;
 let userEnded = true;
 let pttHeld = false;
@@ -763,12 +765,17 @@ function setCallSettingsOpen(force) {
   return next;
 }
 
-controls.brand?.addEventListener("click", (event) => {
-  event.preventDefault();
-  event.stopPropagation();
-  playClick("soft");
-  setCallSettingsOpen();
-});
+document.addEventListener(
+  "click",
+  (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.closest("#brand")) return;
+    event.preventDefault();
+    playClick("soft");
+    setCallSettingsOpen();
+  },
+  true,
+);
 
 async function refreshTtsWarmup() {
   try {
@@ -854,6 +861,7 @@ async function beginConversation({ auto = false } = {}) {
     return;
   }
   joining = true;
+  const epoch = ++joinEpoch;
   userEnded = false;
   reconnectAttempt = 0;
   mediaTimeUs = 0;
@@ -909,6 +917,7 @@ async function beginConversation({ auto = false } = {}) {
       addTimeline("microphone", `Capture started at ${sampleRate} Hz`);
     }
 
+    if (epoch !== joinEpoch) return;
     conversationActive = true;
     setConversationActive(true, true, settings.entryMode === "ptt");
     callMorphs.setMuted(false);
@@ -921,6 +930,7 @@ async function beginConversation({ auto = false } = {}) {
       setQuotaPill(quota.remainingSeconds(), "ok");
     }
   } catch (error) {
+    if (epoch !== joinEpoch) return;
     userEnded = true;
     fallbackInProgress = false;
     closeWebRtcConnection();
@@ -939,8 +949,10 @@ async function beginConversation({ auto = false } = {}) {
       addTimeline("start_error", error.message);
     }
   } finally {
-    joining = false;
-    setStarting(false);
+    if (epoch === joinEpoch) {
+      joining = false;
+      setStarting(false);
+    }
   }
 }
 
