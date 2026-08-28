@@ -6290,3 +6290,36 @@ body[data-boot="ready"] .call-chrome {
   transition: opacity 400ms ease;
 }
 
+details.settings-lab {
+  margin: 8px 0 24px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+details.settings-lab > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 18px;
+}
+details.settings-lab > summary::-webkit-details-marker {
+  display: none;
+}
+details.settings-lab .settings-lab-summary .settings-section-title {
+  margin: 0;
+}
+details.settings-lab .settings-lab-hint {
+  font-size: 0.8rem;
+  color: var(--fg-subtle, rgba(244, 244, 242, 0.55));
+}
+details.settings-lab[open] > summary {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+details.settings-lab .settings-section {
+  padding-inline: 8px;
+}
+
+

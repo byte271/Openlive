@@ -3065,15 +3065,12 @@ function wireSetupSettingsBindings() {
 }
 
 async function bootstrapLlmUi() {
-  setBootStatus("Connecting to gateway…");
   try {
     const data = await fetchLlmProviders();
     llmProviders = data.providers || [];
   } catch {
     llmProviders = [];
-    setBootStatus("Gateway offline — using defaults…");
   }
-  setBootStatus(llmProviders.length ? "Loading voices…" : "Gateway offline — using defaults…");
   fillProviderSelects();
   // Profile roster (always fill, even if gateway voices fail).
   fillVoiceSelect(OFFLINE_VOICES);
@@ -5153,29 +5150,13 @@ function microphoneErrorMessage(error) {
    --------------------------------------------------------------------------- */
 
 /**
- * Remove the boot overlay immediately. The call surface is first paint;
- * do not hold it for a brand animation.
+ * The call surface is first paint. Keep the boot flag in sync if a host
+ * still sets data-boot=loading before this module runs.
  */
 function dismissBootSplash() {
   if (bootSplashDismissed) return;
   bootSplashDismissed = true;
-  const splash = document.getElementById("bootSplash");
-  if (splash) {
-    splash.classList.add("is-hidden");
-    splash.setAttribute("hidden", "");
-    splash.setAttribute("aria-hidden", "true");
-    if (splash.parentNode) splash.parentNode.removeChild(splash);
-  }
   document.body.dataset.boot = "ready";
-}
-
-/**
- * Update the boot status text shown during splash.
- * @param {string} text
- */
-function setBootStatus(text) {
-  const el = document.getElementById("bootStatus");
-  if (el) el.textContent = text;
 }
 
 /**

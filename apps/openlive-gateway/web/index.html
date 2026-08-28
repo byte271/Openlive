@@ -10,18 +10,6 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='8' fill='%236b8cff'/%3E%3C/svg%3E" />
   </head>
   <body data-mode="listening" data-layout="focused" data-workspace="live" data-ui="minimal" data-boot="ready">
-    <!-- Optional leftover splash; first paint is the call surface. -->
-    <div id="bootSplash" class="boot-splash" hidden aria-hidden="true">
-      <div class="boot-splash-inner">
-        <div class="boot-sphere-wrap" aria-hidden="true">
-          <div class="boot-sphere"></div>
-          <div class="boot-sphere-glow"></div>
-        </div>
-        <span class="boot-brand" id="bootBrand">Openlive</span>
-        <span class="boot-status" id="bootStatus">Initializing…</span>
-      </div>
-    </div>
-
     <!-- Icons use explicit stroke attrs so <use> works (CSS does not pierce use shadow trees). -->
     <svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true">
       <defs>
@@ -138,7 +126,7 @@
     <header class="topbar minimal-topbar">
       <button id="brand" class="brand minimal-brand" type="button" aria-label="OpenLive settings">
         <span class="brand-name">OpenLive</span>
-        <small class="brand-version">26.7.16</small>
+        <small class="brand-version" hidden>26.7.16</small>
       </button>
       <nav class="top-actions" aria-label="Session status" hidden>
         <div id="latencyPill" class="latency-pill" hidden aria-live="polite"><span class="latency-dot"></span><span id="latencyValue">— ms</span></div>
@@ -384,40 +372,6 @@
 
         <section class="settings-section">
           <h3 class="settings-section-title">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-agent"/></svg>
-            Background agent
-          </h3>
-          <p class="settings-hint">Built-in tools: web search, time, calculator. Uses the language model above — no external coding agent.</p>
-          <div class="settings-card">
-            <label class="settings-row" for="settingsAgentKind">
-              <span class="settings-row-label">Agent</span>
-              <select id="settingsAgentKind">
-                <option value="internal">OpenLive agent</option>
-                <option value="none">None — voice only</option>
-              </select>
-            </label>
-            <label class="settings-row" for="settingsAgentClass">
-              <span class="settings-row-label">Agent class</span>
-              <select id="settingsAgentClass">
-                <option value="general" selected>General — all tools</option>
-                <option value="researcher">Researcher — search &amp; browse only</option>
-                <option value="coder">Coder — files &amp; calc</option>
-                <option value="safe">Safe — read-only + calc/time</option>
-              </select>
-            </label>
-            <p class="settings-hint" style="margin:0 12px 10px">Classes limit tools and tag memory. Say “yes” / “确认” to approve a pending file change by voice.</p>
-            <div class="settings-row settings-row-actions">
-              <button id="settingsProbeAgent" class="settings-btn" type="button">
-                <svg viewBox="0 0 24 24"><use href="#icon-check"/></svg>
-                Test LLM + agent
-              </button>
-              <span id="settingsProbeStatus" class="setup-probe-status" aria-live="polite"></span>
-            </div>
-          </div>
-        </section>
-
-        <section class="settings-section">
-          <h3 class="settings-section-title">
             <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-voice"/></svg>
             Voice &amp; language
           </h3>
@@ -505,27 +459,6 @@
 
         <section class="settings-section">
           <h3 class="settings-section-title">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-memory"/></svg>
-            Sandbox workspace
-          </h3>
-          <p class="settings-hint">Agent file tools run inside a constrained sandbox under your app data (not your whole disk). Lab/test folders are created automatically.</p>
-          <div class="settings-card">
-            <p id="settingsSandboxStatus" class="settings-hint" style="margin:10px 12px">Loading sandbox…</p>
-            <ul id="settingsSandboxList" class="sandbox-file-list" aria-label="Sandbox files"></ul>
-            <p class="settings-hint" style="margin:8px 12px 6px">Recent screenshots &amp; PDFs</p>
-            <div id="settingsMediaGallery" class="media-gallery" aria-label="Lab media gallery"></div>
-            <div class="settings-row settings-row-actions">
-              <button id="settingsSandboxRefresh" class="settings-btn ghost" type="button">Refresh files</button>
-              <button id="settingsSandboxSelfTest" class="settings-btn ghost" type="button">Run self-test</button>
-              <button id="settingsDeepDemo" class="settings-btn ghost" type="button">Demo deep pool</button>
-              <button id="settingsShotDemo" class="settings-btn ghost" type="button">Demo screenshot</button>
-            </div>
-            <p id="settingsSandboxTestStatus" class="settings-hint" style="margin:0 12px 10px"></p>
-          </div>
-        </section>
-
-        <section class="settings-section">
-          <h3 class="settings-section-title">
             <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-instructions"/></svg>
             Speaking style
           </h3>
@@ -583,39 +516,104 @@
           </div>
         </section>
 
-        <section class="settings-section">
-          <h3 class="settings-section-title">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-layout"/></svg>
-            Advanced
-          </h3>
-          <p class="settings-hint">Camera, screen share, multi-agent, sandbox, and diagnostics stay here — not on the call chrome.</p>
-          <div class="settings-card">
-            <div class="settings-row settings-row-actions">
-              <button id="settingsCamera" class="settings-btn ghost" type="button">Camera</button>
-              <button id="settingsScreen" class="settings-btn ghost" type="button">Screen share</button>
-              <button id="settingsTranscript" class="settings-btn ghost" type="button">Transcript</button>
-            </div>
-            <div class="settings-row settings-row-actions">
-              <button id="settingsModes" class="settings-btn ghost" type="button">Presence modes</button>
-              <button id="settingsTasks" class="settings-btn ghost" type="button">Tasks &amp; evidence</button>
-              <button id="settingsDiagnostics" class="settings-btn ghost" type="button">Diagnostics</button>
-            </div>
-            <p class="settings-hint" style="margin:8px 12px 10px">Face: Bloub (MIT). Inspired by the x.ai avatar; OpenLive is not affiliated with xAI or OpenAI. Controls: Morphicons + Lucide.</p>
-          </div>
-        </section>
+        <details class="settings-lab" id="settingsLab">
+          <summary class="settings-lab-summary">
+            <span class="settings-section-title">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-sliders"/></svg>
+              Advanced
+            </span>
+            <span class="settings-lab-hint">Agents, camera, sandbox, diagnostics</span>
+          </summary>
 
-        <section class="settings-section">
-          <h3 class="settings-section-title">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-shield"/></svg>
-            Runtime
-          </h3>
-          <div class="settings-card">
-            <div id="runtimeStatus" class="runtime-status"><p class="sheet-intro">Loading gateway status…</p></div>
-            <div class="settings-row settings-row-actions">
-              <button id="reopenSetup" class="settings-btn ghost" type="button">Open setup wizard</button>
+          <section class="settings-section">
+            <h3 class="settings-section-title">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-agent"/></svg>
+              Background agent
+            </h3>
+            <p class="settings-hint">Built-in tools: web search, time, calculator. Uses the language model above — no external coding agent.</p>
+            <div class="settings-card">
+              <label class="settings-row" for="settingsAgentKind">
+                <span class="settings-row-label">Agent</span>
+                <select id="settingsAgentKind">
+                  <option value="internal">OpenLive agent</option>
+                  <option value="none">None — voice only</option>
+                </select>
+              </label>
+              <label class="settings-row" for="settingsAgentClass">
+                <span class="settings-row-label">Agent class</span>
+                <select id="settingsAgentClass">
+                  <option value="general" selected>General — all tools</option>
+                  <option value="researcher">Researcher — search &amp; browse only</option>
+                  <option value="coder">Coder — files &amp; calc</option>
+                  <option value="safe">Safe — read-only + calc/time</option>
+                </select>
+              </label>
+              <p class="settings-hint" style="margin:0 12px 10px">Classes limit tools and tag memory. Say “yes” / “确认” to approve a pending file change by voice.</p>
+              <div class="settings-row settings-row-actions">
+                <button id="settingsProbeAgent" class="settings-btn" type="button">
+                  <svg viewBox="0 0 24 24"><use href="#icon-check"/></svg>
+                  Test LLM + agent
+                </button>
+                <span id="settingsProbeStatus" class="setup-probe-status" aria-live="polite"></span>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+
+          <section class="settings-section">
+            <h3 class="settings-section-title">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-memory"/></svg>
+              Sandbox workspace
+            </h3>
+            <p class="settings-hint">Agent file tools run inside a constrained sandbox under your app data (not your whole disk). Lab/test folders are created automatically.</p>
+            <div class="settings-card">
+              <p id="settingsSandboxStatus" class="settings-hint" style="margin:10px 12px">Loading sandbox…</p>
+              <ul id="settingsSandboxList" class="sandbox-file-list" aria-label="Sandbox files"></ul>
+              <p class="settings-hint" style="margin:8px 12px 6px">Recent screenshots &amp; PDFs</p>
+              <div id="settingsMediaGallery" class="media-gallery" aria-label="Lab media gallery"></div>
+              <div class="settings-row settings-row-actions">
+                <button id="settingsSandboxRefresh" class="settings-btn ghost" type="button">Refresh files</button>
+                <button id="settingsSandboxSelfTest" class="settings-btn ghost" type="button">Run self-test</button>
+                <button id="settingsDeepDemo" class="settings-btn ghost" type="button">Demo deep pool</button>
+                <button id="settingsShotDemo" class="settings-btn ghost" type="button">Demo screenshot</button>
+              </div>
+              <p id="settingsSandboxTestStatus" class="settings-hint" style="margin:0 12px 10px"></p>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h3 class="settings-section-title">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-camera"/></svg>
+              Capture &amp; workspace
+            </h3>
+            <p class="settings-hint">Camera, screen share, multi-agent, and diagnostics stay here — not on the call chrome.</p>
+            <div class="settings-card">
+              <div class="settings-row settings-row-actions">
+                <button id="settingsCamera" class="settings-btn ghost" type="button">Camera</button>
+                <button id="settingsScreen" class="settings-btn ghost" type="button">Screen share</button>
+                <button id="settingsTranscript" class="settings-btn ghost" type="button">Transcript</button>
+              </div>
+              <div class="settings-row settings-row-actions">
+                <button id="settingsModes" class="settings-btn ghost" type="button">Presence modes</button>
+                <button id="settingsTasks" class="settings-btn ghost" type="button">Tasks &amp; evidence</button>
+                <button id="settingsDiagnostics" class="settings-btn ghost" type="button">Diagnostics</button>
+              </div>
+              <p class="settings-hint" style="margin:8px 12px 10px">Face: Bloub (MIT). Inspired by the x.ai avatar; OpenLive is not affiliated with xAI or OpenAI. Controls: Morphicons + Lucide.</p>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h3 class="settings-section-title">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-shield"/></svg>
+              Runtime
+            </h3>
+            <div class="settings-card">
+              <div id="runtimeStatus" class="runtime-status"><p class="sheet-intro">Loading gateway status…</p></div>
+              <div class="settings-row settings-row-actions">
+                <button id="reopenSetup" class="settings-btn ghost" type="button">Open setup wizard</button>
+              </div>
+            </div>
+          </section>
+        </details>
 
       </div>
     </section>

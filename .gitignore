@@ -1,4 +1,5 @@
 /target
+apps/openlive-desktop/target/
 /data
 apps/openlive-gateway/data/
 *.zip

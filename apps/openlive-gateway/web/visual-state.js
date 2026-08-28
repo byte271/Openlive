@@ -35,8 +35,8 @@ const PRESENTATIONS = Object.freeze({
   },
   starting: {
     label: "Listening…",
-    title: "Opening channel",
-    detail: "Warming the voice path.",
+    title: "Opening",
+    detail: "Just a moment.",
     tone: "neutral",
   },
   listening: {
@@ -46,9 +46,9 @@ const PRESENTATIONS = Object.freeze({
     tone: "input",
   },
   thinking: {
-    label: "Looking it up",
+    label: "Thinking",
     title: "One moment",
-    detail: "Checking that for you — keep talking if you want.",
+    detail: "Keep talking — I'll catch up.",
     tone: "neutral",
   },
   speaking: {
@@ -58,7 +58,7 @@ const PRESENTATIONS = Object.freeze({
     tone: "output",
   },
   yielding: {
-    label: "Yielding",
+    label: "Listening",
     title: "All yours",
     detail: "You go — I'm listening.",
     tone: "input",

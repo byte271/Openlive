@@ -274,7 +274,7 @@ test("voice presentation keeps live states concise and distinct", () => {
 test("v1.2 YIELDING mode is distinct from INTERRUPTED and LISTENING", () => {
   assert.notEqual(VoiceMode.YIELDING, VoiceMode.INTERRUPTED);
   assert.notEqual(VoiceMode.YIELDING, VoiceMode.LISTENING);
-  assert.equal(voicePresentation(VoiceMode.YIELDING).label, "Yielding");
+  assert.equal(voicePresentation(VoiceMode.YIELDING).label, "Listening");
   // YIELDING gets a slightly higher input weight than LISTENING so the orb
   // visibly reacts to the user's voice even while output is being ducked.
   assert.ok(

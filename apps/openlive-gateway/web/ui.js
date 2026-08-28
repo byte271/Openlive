@@ -341,7 +341,7 @@ export function setVoiceMode(mode, detail) {
     listening: "You have the floor",
     thinking: "Reasoning",
     speaking: "OpenLive has the floor",
-    yielding: "Yielding",
+    yielding: "Listening",
     interrupted: "Floor returned",
     muted: "Microphone paused",
     reconnecting: "Restoring floor",
