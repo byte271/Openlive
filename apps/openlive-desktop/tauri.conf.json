@@ -6,8 +6,7 @@
   "build": {
     "beforeDevCommand": "",
     "beforeBuildCommand": "cargo build -p openlive-gateway --release",
-    "frontendDist": "http://127.0.0.1:12345",
-    "devUrl": "http://127.0.0.1:12345"
+    "frontendDist": "splash"
   },
   "app": {
     "windows": [],

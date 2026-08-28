@@ -253,6 +253,8 @@ test("jitter target expands on loss and recovers after stable playout", () => {
    --------------------------------------------------------------------------- */
 
 test("voice presentation keeps live states concise and distinct", () => {
+  assert.equal(voicePresentation(VoiceMode.IDLE).label, "Listening");
+  assert.equal(voicePresentation(VoiceMode.IDLE).detail, "Speak freely.");
   assert.equal(voicePresentation(VoiceMode.LISTENING).label, "Listening");
   assert.equal(voicePresentation(VoiceMode.SPEAKING).label, "Speaking");
   assert.notEqual(

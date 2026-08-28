@@ -1,16 +1,17 @@
 /**
- * OpenLive 26.7.16 — TTS client (Piper via gateway, formant, then browser).
+ * OpenLive 26.7.16 — TTS client (Piper via gateway; formant only if requested).
  */
 
 import { playPcmBase64 } from "./agent-client.js";
 import { listBrowserVoices, speakBrowser, waitForVoices } from "./speech-tts.js";
+import { neuralSpeakEngine } from "./demo-voice.js";
 
 /**
  * @returns {Promise<object>}
  */
 export async function fetchTtsStatus() {
   const r = await fetch("/v1/tts/status");
-  return r.json().catch(() => ({ preferred: "formant", piper: { available: false } }));
+  return r.json().catch(() => ({ preferred: "piper", piper: { available: false } }));
 }
 
 /**
@@ -29,11 +30,12 @@ export async function speakOpenLive(text, opts = {}) {
   const line = String(text || "").trim();
   if (!line) return { ok: false, engine: "none", error: "empty" };
 
-  const engine = opts.ttsEngine || "auto";
+  const requested = opts.ttsEngine || "auto";
+  const engine = neuralSpeakEngine({ ttsEngine: requested });
   const onStatus = opts.onStatus || (() => {});
 
-  // 1) Piper / formant via gateway (most reliable path for this product).
-  if (engine === "auto" || engine === "piper" || engine === "formant") {
+  // Piper (or explicit formant). Auto never pads with formant.
+  if (engine === "piper" || engine === "formant") {
     try {
       onStatus(engine === "formant" ? "Speaking (formant)…" : "Speaking (open-source TTS)…");
       const r = await fetch("/v1/tts/speak", {
@@ -42,13 +44,13 @@ export async function speakOpenLive(text, opts = {}) {
         body: JSON.stringify({
           text: line.slice(0, 800),
           voice_id: opts.voiceId || "en_US-lessac-medium",
-          engine: engine === "formant" ? "formant" : "auto",
+          engine: engine === "formant" ? "formant" : "piper",
         }),
       });
       const data = await r.json().catch(() => ({}));
       if (r.ok && data.pcm_base64) {
         await playPcmBase64(data.pcm_base64, data.sample_rate || 24000);
-        return { ok: true, engine: data.engine || "formant", piper: data.piper };
+        return { ok: true, engine: data.engine || engine, piper: data.piper };
       }
       if (engine === "piper") {
         return {
@@ -65,8 +67,8 @@ export async function speakOpenLive(text, opts = {}) {
     }
   }
 
-  // 2) Browser Web Speech (last resort — quality varies a lot).
-  if (engine === "auto" || engine === "browser") {
+  // Browser Web Speech only when explicitly selected.
+  if (engine === "browser") {
     try {
       onStatus("Speaking (browser)…");
       await waitForVoices(4000);

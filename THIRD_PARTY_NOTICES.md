@@ -68,6 +68,20 @@ binaries and update this notice.
 
 ---
 
+## Call surface UI
+
+Vendored under `apps/openlive-gateway/web/vendor/`. Keep the license files beside the bundles when redistributing.
+
+| Project | License | Use in OpenLive |
+|---------|---------|-----------------|
+| **[Bloub](https://github.com/jeremy-prt/bloub)** (Jérémy Perret) | MIT | Framework-free face/orb engine (`engine.sample(t)`). Design imitates the x.ai avatar. **OpenLive is not affiliated with xAI, x.ai, or OpenAI.** |
+| **[Morphicons](https://github.com/guillermolg00/morphicons)** | MIT | Spring morphs for Mute / End / Settings (`createMorph` + lucide path data) |
+| **[Lucide](https://lucide.dev/)** | ISC | Icon path data consumed by Morphicons (not `lucide-react`) |
+
+Morphicons are **not** used as the speaking face.
+
+---
+
 ## Fonts (web UI)
 
 | Family | Source | License |

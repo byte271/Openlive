@@ -6098,3 +6098,121 @@ body:has(.settings-sheet[data-open="true"])::before {
     transition: none !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Default call surface (bloub + Mute / End / Settings)
+   --------------------------------------------------------------------------- */
+
+body[data-ui="minimal"] .minimal-topbar {
+  pointer-events: none;
+}
+body[data-ui="minimal"] .minimal-topbar .brand {
+  pointer-events: auto;
+  opacity: 0.55;
+}
+body[data-ui="minimal"] .brand-version,
+body[data-ui="minimal"] .top-actions {
+  display: none !important;
+}
+body[data-ui="minimal"] .context-rail {
+  display: none !important;
+}
+body.show-rail[data-ui="minimal"] .context-rail {
+  display: grid !important;
+}
+body[data-ui="minimal"] .minimal-shell {
+  grid-template-columns: 1fr;
+}
+
+.bloub-orb {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+#bloubOrb.is-dimmed {
+  opacity: 0.42;
+  filter: grayscale(0.25);
+  transition: opacity 280ms ease, filter 280ms ease;
+}
+body[data-ui="minimal"] .orb-shell {
+  filter: none;
+  background: transparent;
+}
+body[data-ui="minimal"] .orb-aura,
+body[data-ui="minimal"] .orb-glow {
+  display: none;
+}
+
+.call-chrome {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 28px;
+  width: min(420px, 100%);
+  padding: 8px 12px 4px;
+}
+.call-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #f4f4f2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  min-width: 72px;
+}
+.call-btn .morph-host,
+.call-btn .morph-host svg {
+  width: 28px;
+  height: 28px;
+  display: block;
+}
+.call-mute,
+.call-settings,
+.call-end {
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+  position: relative;
+}
+.call-mute,
+.call-settings {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4f4f2;
+}
+.call-end {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #e11d48;
+  color: #fff;
+  box-shadow: 0 10px 28px rgba(225, 29, 72, 0.35);
+}
+.call-btn-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.call-btn:active {
+  transform: scale(0.94);
+}
+.call-mute.muted,
+.call-settings[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.18);
+}
+body[data-boot="loading"] .call-chrome {
+  opacity: 0;
+}
+body[data-boot="ready"] .call-chrome {
+  opacity: 1;
+  transition: opacity 400ms ease;
+}
+

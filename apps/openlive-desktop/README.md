@@ -49,7 +49,8 @@ cargo tauri build
 
 ## Notes
 
-- The desktop shell loads the same web UI as the browser version.
-- The gateway server must be running locally for the voice surface to work.
+- The desktop shell loads a local listening-orb splash immediately, then
+  navigates to the gateway UI once `http://127.0.0.1:12345/health` is up.
+  Spawning the gateway must not block first paint.
 - Replace `icons/icon.ico` and `icons/icon.icns` with branded assets before
   publishing.

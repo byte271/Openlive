@@ -28,21 +28,21 @@ export const VoiceMode = Object.freeze({
 
 const PRESENTATIONS = Object.freeze({
   idle: {
-    label: "Ready when you are",
+    label: "Listening",
     title: "OpenLive",
-    detail: "Tap the mic or press Space to start.",
+    detail: "Speak freely.",
     tone: "neutral",
   },
   starting: {
-    label: "Connecting…",
+    label: "Listening…",
     title: "Opening channel",
-    detail: "Opening the voice channel.",
+    detail: "Warming the voice path.",
     tone: "neutral",
   },
   listening: {
     label: "Listening",
     title: "Your turn",
-    detail: "I'm listening — jump in anytime.",
+    detail: "Speak freely.",
     tone: "input",
   },
   thinking: {

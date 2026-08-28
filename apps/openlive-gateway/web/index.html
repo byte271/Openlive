@@ -59,7 +59,7 @@
     </svg>
 
     <!-- First-run setup wizard -->
-    <div id="setupWizard" class="setup-wizard" data-open="true" hidden>
+    <div id="setupWizard" class="setup-wizard" data-open="false" hidden>
       <div class="setup-card">
         <div class="setup-hero" aria-hidden="true">
           <div class="setup-hero-orb"></div>
@@ -143,11 +143,11 @@
         <span class="brand-name">OpenLive</span>
         <small class="brand-version">26.7.16</small>
       </button>
-      <nav class="top-actions" aria-label="Session controls">
+      <nav class="top-actions" aria-label="Session status" hidden>
         <div id="latencyPill" class="latency-pill" hidden aria-live="polite"><span class="latency-dot"></span><span id="latencyValue">— ms</span></div>
         <div id="quotaPill" class="quota-pill" hidden aria-live="polite"><span class="quota-dot"></span><span id="quotaValue">—</span></div>
         <span id="connection" class="connection-dot" role="status" aria-label="Disconnected"></span>
-        <label class="lang-select-wrap" title="Language / 语言">
+        <label class="lang-select-wrap" title="Language / 语言" hidden>
           <span class="visually-hidden">Language</span>
           <select id="languageSelect" class="lang-select" aria-label="Language / 语言">
             <option value="auto">Auto</option>
@@ -162,9 +162,8 @@
         </label>
         <!-- legacy id kept for older scripts -->
         <button id="languageControl" type="button" hidden aria-hidden="true"><span id="languageValue">Auto</span></button>
-        <button id="transcriptToggle" class="icon-button" type="button" aria-label="Toggle transcript" title="Transcript (T)"><svg viewBox="0 0 24 24"><use href="#icon-transcript" /></svg></button>
-        <button id="settings" class="icon-button" type="button" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24"><use href="#icon-sliders" /></svg></button>
-        <button id="debug" class="icon-button" type="button" aria-label="Diagnostics" title="Diagnostics (D)"><svg viewBox="0 0 24 24"><use href="#icon-share" /></svg></button>
+        <button id="transcriptToggle" class="icon-button" type="button" hidden aria-label="Toggle transcript" title="Transcript (T)"><svg viewBox="0 0 24 24"><use href="#icon-transcript" /></svg></button>
+        <button id="debug" class="icon-button" type="button" hidden aria-label="Diagnostics" title="Diagnostics (D)"><svg viewBox="0 0 24 24"><use href="#icon-share" /></svg></button>
       </nav>
     </header>
 
@@ -202,15 +201,16 @@
               <div class="orb-shell" id="orbShell">
                 <div class="orb-aura" aria-hidden="true"></div>
                 <div class="orb-glow" aria-hidden="true"></div>
-                <canvas id="voiceOrb" width="640" height="640" role="img" aria-label="Voice activity"></canvas>
+                <svg id="bloubOrb" class="bloub-orb" width="640" height="640"></svg>
+                <canvas id="voiceOrb" width="640" height="640" hidden aria-hidden="true"></canvas>
                 <div class="orb-ring" aria-hidden="true"></div>
                 <div id="backchannelBadge" class="backchannel-badge" aria-hidden="true">mhmm</div>
                 <div class="orb-status" hidden><i></i><span id="floorLabel">Floor open</span></div>
               </div>
               <div class="voice-copy minimal-copy">
-                <p id="stateLabel" class="state-label">Ready when you are</p>
+                <p id="stateLabel" class="state-label">Listening</p>
                 <h1 id="stateTitle" class="visually-hidden">OpenLive</h1>
-                <p id="stateDetail" class="state-detail">Tap the mic or press Space to start.</p>
+                <p id="stateDetail" class="state-detail">Speak freely.</p>
               </div>
               <p id="assistantText" class="assistant-ephemeral" aria-live="polite"></p>
               <div id="notice" class="notice" role="status" hidden></div>
@@ -259,22 +259,24 @@
           </aside>
         </section>
 
-        <!-- Bottom composer — ChatGPT-voice inspired -->
-        <footer class="control-dock minimal-dock" aria-label="Voice controls">
-          <div class="composer-bar">
-            <button id="taskAdd" class="composer-icon" type="button" aria-label="New task" title="New task">
-              <svg viewBox="0 0 24 24"><use href="#icon-plus" /></svg>
+        <!-- Bottom chrome — Mute / End / Settings only -->
+        <footer class="control-dock minimal-dock" aria-label="Call controls">
+          <div class="call-chrome" role="toolbar" aria-label="Mute, End, Settings">
+            <button id="primary" class="call-btn call-mute" type="button" aria-label="Mute">
+              <span class="morph-host" data-morph="mute"></span>
+              <span id="primaryLabel" class="call-btn-label">Mute</span>
             </button>
-            <input id="composerInput" class="composer-input" type="text" placeholder="Type or speak" autocomplete="off" />
-            <button id="primary" class="composer-mic" type="button" aria-label="Start conversation">
-              <svg class="mic-icon" viewBox="0 0 24 24"><use href="#icon-mic" /></svg>
-              <svg class="ptt-icon" viewBox="0 0 24 24" hidden><use href="#icon-ptt" /></svg>
-              <span id="primaryLabel" class="visually-hidden">Start</span>
+            <button id="end" class="call-btn call-end" type="button" aria-label="End" title="End (Esc)">
+              <span class="morph-host" data-morph="end"></span>
+              <span class="call-btn-label">End</span>
             </button>
-            <button id="end" class="composer-end" type="button" aria-label="End" hidden title="End (Esc)">
-              <svg viewBox="0 0 24 24"><use href="#icon-close" /></svg>
+            <button id="settings" class="call-btn call-settings" type="button" aria-label="Settings" title="Settings (S)" aria-expanded="false">
+              <span class="morph-host" data-morph="settings"></span>
+              <span class="call-btn-label">Settings</span>
             </button>
           </div>
+          <input id="composerInput" class="composer-input" type="text" placeholder="Type or speak" autocomplete="off" hidden />
+          <button id="taskAdd" class="composer-icon" type="button" hidden aria-label="New task"></button>
           <!-- Hidden dock buttons retained for keyboard / parity modules -->
           <button id="instructions" type="button" hidden><span id="instructionsBadge" hidden></span></button>
           <button id="camera" type="button" hidden></button>
@@ -422,7 +424,7 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-voice"/></svg>
             Voice &amp; language
           </h3>
-          <p class="settings-hint">Preferred path: <strong>open-source Piper</strong> neural TTS → built-in formant backup → browser (lowest quality). If Piper is missing, you’ll get a one-click install command.</p>
+          <p class="settings-hint">Preferred path: <strong>open-source Piper</strong> neural TTS. Formant/mock is never used on the demo path unless you pick it here as a last-resort fallback.</p>
           <div class="settings-card">
             <label class="settings-row" for="settingsLanguage">
               <span class="settings-row-label">Language / 语言</span>
@@ -440,9 +442,9 @@
             <label class="settings-row" for="settingsTtsEngine">
               <span class="settings-row-label">TTS engine</span>
               <select id="settingsTtsEngine">
-                <option value="auto" selected>Auto (Piper → formant → browser)</option>
+                <option value="auto" selected>Auto (Piper — silence until ready)</option>
                 <option value="piper">Piper only (open-source)</option>
-                <option value="formant">Formant (built-in backup)</option>
+                <option value="formant">Formant (last-resort backup)</option>
                 <option value="browser">Browser (Web Speech)</option>
               </select>
             </label>
@@ -581,6 +583,27 @@
               <span class="settings-row-label">Show latency</span>
               <input id="latencyToggle" type="checkbox" checked />
             </label>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3 class="settings-section-title">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-layout"/></svg>
+            Advanced
+          </h3>
+          <p class="settings-hint">Camera, screen share, multi-agent, sandbox, and diagnostics stay here — not on the call chrome.</p>
+          <div class="settings-card">
+            <div class="settings-row settings-row-actions">
+              <button id="settingsCamera" class="settings-btn ghost" type="button">Camera</button>
+              <button id="settingsScreen" class="settings-btn ghost" type="button">Screen share</button>
+              <button id="settingsTranscript" class="settings-btn ghost" type="button">Transcript</button>
+            </div>
+            <div class="settings-row settings-row-actions">
+              <button id="settingsModes" class="settings-btn ghost" type="button">Presence modes</button>
+              <button id="settingsTasks" class="settings-btn ghost" type="button">Tasks &amp; evidence</button>
+              <button id="settingsDiagnostics" class="settings-btn ghost" type="button">Diagnostics</button>
+            </div>
+            <p class="settings-hint" style="margin:8px 12px 10px">Face: Bloub (MIT). Inspired by the x.ai avatar; OpenLive is not affiliated with xAI or OpenAI. Controls: Morphicons + Lucide.</p>
           </div>
         </section>
 

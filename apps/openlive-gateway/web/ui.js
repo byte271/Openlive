@@ -169,6 +169,13 @@ const elements = {
   settingsMediaGallery: query("#settingsMediaGallery"),
   settingsSandboxTestStatus: query("#settingsSandboxTestStatus"),
   reopenSetup: query("#reopenSetup"),
+  bloubOrb: query("#bloubOrb"),
+  settingsCamera: query("#settingsCamera"),
+  settingsScreen: query("#settingsScreen"),
+  settingsTranscript: query("#settingsTranscript"),
+  settingsModes: query("#settingsModes"),
+  settingsTasks: query("#settingsTasks"),
+  settingsDiagnostics: query("#settingsDiagnostics"),
 };
 
 export const controls = {
@@ -205,6 +212,7 @@ export const controls = {
   closeVoice: elements.closeVoice,
   closeMode: elements.closeMode,
   voiceOrb: elements.voiceOrb,
+  orbShell: elements.orbShell,
   onboardingDismiss: elements.onboardingDismiss,
   onboardingStart: elements.onboardingStart,
   setupWizard: elements.setupWizard,
@@ -275,6 +283,13 @@ export const controls = {
   settingsMediaGallery: elements.settingsMediaGallery,
   settingsSandboxTestStatus: elements.settingsSandboxTestStatus,
   reopenSetup: elements.reopenSetup,
+  bloubOrb: elements.bloubOrb,
+  settingsCamera: elements.settingsCamera,
+  settingsScreen: elements.settingsScreen,
+  settingsTranscript: elements.settingsTranscript,
+  settingsModes: elements.settingsModes,
+  settingsTasks: elements.settingsTasks,
+  settingsDiagnostics: elements.settingsDiagnostics,
 };
 
 /* ---------------------------------------------------------------------------
@@ -342,11 +357,8 @@ export function setVoiceMode(mode, detail) {
 
 /**
  * Update the primary dock button to reflect conversation + microphone state.
- * Three shapes:
- *   - Inactive: "Start", full-width pill with mic icon.
- *   - Active + mic on (auto VAD): collapsed circle, mic icon only.
- *   - Active + mic off: "Resume", full-width pill.
- *   - PTT mode + active: shows PTT icon and label "Hold".
+ * Default chrome is Mute / End / Settings. Idle Mute still starts the call
+ * (user-gesture mic unlock) without looking like a lab "Start" control.
  *
  * @param {boolean} active - Whether a conversation is in progress.
  * @param {boolean} [microphoneActive] - Whether the mic is currently captured.
@@ -361,8 +373,8 @@ export function setConversationActive(active, microphoneActive = active, pttMode
   // Composer mic mirrors dock state for minimal UI.
   elements.primary.classList.toggle("composer-live", active);
   if (!active) {
-    setText(elements.primaryLabel, "Start");
-    elements.primary.setAttribute("aria-label", "Start conversation");
+    setText(elements.primaryLabel, "Mute");
+    elements.primary.setAttribute("aria-label", "Start call");
   } else if (pttMode) {
     setText(elements.primaryLabel, microphoneActive ? "Release" : "Hold");
     elements.primary.setAttribute(
@@ -371,17 +383,13 @@ export function setConversationActive(active, microphoneActive = active, pttMode
     );
   } else if (microphoneActive) {
     setText(elements.primaryLabel, "Mute");
-    elements.primary.setAttribute("aria-label", "Pause microphone");
+    elements.primary.setAttribute("aria-label", "Mute");
   } else {
-    setText(elements.primaryLabel, "Resume");
-    elements.primary.setAttribute("aria-label", "Resume microphone");
+    setText(elements.primaryLabel, "Unmute");
+    elements.primary.setAttribute("aria-label", "Unmute");
   }
   if (elements.end) {
-    elements.end.hidden = !active;
-    // Force reflow so end-button entrance animation restarts cleanly.
-    if (active) {
-      void elements.end.offsetWidth;
-    }
+    elements.end.hidden = false;
   }
   const composer = document.querySelector(".composer-bar");
   composer?.classList.toggle("is-live", active);
@@ -406,7 +414,7 @@ export function setConversationActive(active, microphoneActive = active, pttMode
 export function setStarting(starting) {
   if (!elements.primary) return;
   elements.primary.disabled = starting;
-  setText(elements.primaryLabel, starting ? "Starting…" : "Start");
+  setText(elements.primaryLabel, starting ? "Listening…" : "Mute");
 }
 
 /**

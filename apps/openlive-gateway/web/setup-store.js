@@ -34,7 +34,7 @@ export const DEFAULT_SETUP = Object.freeze({
   /** Always empty in persisted JSON; use session memory via loadSetup(). */
   modelApiKey: "",
   llmModel: "meta/llama-3.1-8b-instruct",
-  ttsModel: "formant",
+  ttsModel: "piper",
   asrModel: "browser",
   voiceId: "en_US-lessac-medium",
   /**
@@ -53,9 +53,9 @@ export const DEFAULT_SETUP = Object.freeze({
   browserTts: true,
   /**
    * TTS engine preference:
-   * - auto: Piper if installed, else formant, else browser
+   * - auto: Piper neural only (silence until ready — no formant pad)
    * - piper: open-source neural (requires install)
-   * - formant: built-in gateway synth
+   * - formant: built-in backup (explicit last resort)
    * - browser: Web Speech API
    */
   ttsEngine: "auto",

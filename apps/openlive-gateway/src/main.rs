@@ -299,9 +299,9 @@ async fn tts_status() -> Json<serde_json::Value> {
     let st = piper_status(DEFAULT_PIPER_VOICE);
     Json(serde_json::json!({
         "piper": st,
-        "fallback": "formant",
+        "fallback": "silence until Piper (formant only if engine=formant)",
         "browser_tts": "optional client-side",
-        "preferred": if st.available { "piper" } else { "formant" },
+        "preferred": if st.available { "piper" } else { "silence" },
     }))
 }
 
@@ -334,7 +334,7 @@ async fn tts_speak(
         .and_then(serde_json::Value::as_str)
         .unwrap_or("auto");
 
-    // Prefer Piper when installed; otherwise formant.
+    // Prefer Piper. Auto never falls through to formant (demo path = zero fake voice).
     if prefer != "formant" {
         match piper_synthesize(text, voice_id) {
             Ok((pcm, rate)) => {
@@ -353,19 +353,16 @@ async fn tts_speak(
                     .into_response();
             }
             Err(e) => {
-                if prefer == "piper" {
-                    let st = piper_status(voice_id);
-                    return (
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        Json(serde_json::json!({
-                            "error": e,
-                            "piper": st,
-                            "hint": "Copy install_command_windows or install_command_unix from /v1/tts/status",
-                        })),
-                    )
-                        .into_response();
-                }
-                // fall through to formant
+                let st = piper_status(voice_id);
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(serde_json::json!({
+                        "error": e,
+                        "piper": st,
+                        "hint": "Copy install_command_windows or install_command_unix from /v1/tts/status. Formant is only used when engine=formant.",
+                    })),
+                )
+                    .into_response();
             }
         }
     }
@@ -1739,7 +1736,7 @@ async fn list_voices(State(state): State<AppState>) -> Json<serde_json::Value> {
         "active": active,
         "engine": if piper.available { "piper+formant" } else { "openlive-formant" },
         "piper": piper,
-        "note": "Prefer open-source Piper when installed; formant is always available offline."
+        "note": "Prefer Piper when installed. Formant is available only when engine=formant."
     }))
 }
 

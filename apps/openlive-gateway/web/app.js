@@ -8,7 +8,7 @@
  * Architecture:
  *   - `socket` is the binary WebSocket to /v1/realtime on the gateway.
  *   - `audio` is the AudioSession (mic capture + playback worklets).
- *   - `visualizer` is the canvas orb renderer.
+ *   - `visualizer` is the bloub orb (x.ai-style face; not affiliated with xAI).
  *   - `transcript` is the in-memory TranscriptLog.
  *   - `telemetry` is the ConnectionTelemetry rolling window.
  *   - `settings` is the persisted UI preferences.
@@ -87,6 +87,12 @@ import {
 } from "./speech-tts.js";
 import { exportMemory, saveMemoryItem } from "./memory-client.js";
 import { fetchTtsStatus, piperInstallUi, speakOpenLive } from "./tts-client.js";
+import {
+  allowInboundProviderPcm,
+  demoAllowsFormant,
+  isRealTtsReady,
+} from "./demo-voice.js";
+import { installCallMorphs } from "./call-controls.js";
 import {
   BACKCHANNEL_TOKENS,
   identityReply,
@@ -243,8 +249,16 @@ const BUILTIN_PROVIDER_DETAILS = {
   custom: { id: "custom", name: "Custom", base_url: "http://127.0.0.1:8000/v1", default_model: "default", models: [], free_tier: true, description: "Any OpenAI-compatible base URL. Enter base URL, then pick or type a model id." },
 };
 
-const visualizer = new VoiceVisualizer(controls.voiceOrb);
+const visualizer = new VoiceVisualizer(controls.bloubOrb || controls.voiceOrb);
 visualizer.setMotionScale(settings.motionScale);
+
+/** Morphicons on Mute / End / Settings. Installed after DOM listeners. */
+let callMorphs = {
+  setMuted() {},
+  setSettingsOpen() {},
+};
+/** Piper (or other neural TTS) is ready — demo path stays silent until then. */
+let realTtsReady = false;
 
 const mediaCapture = new MediaCaptureSession({
   onState: handleCaptureState,
@@ -411,7 +425,7 @@ controls.settings?.addEventListener("click", () => {
   if (!controls.settingsVoice?.options?.length) {
     fillVoiceSelect(voices.length ? voices : OFFLINE_VOICES);
   }
-  toggleSettings();
+  setCallSettingsOpen();
   // Scroll settings body to top on open so the user always sees the first section.
   const settingsBody = document.querySelector(".settings-body");
   if (settingsBody) {
@@ -424,7 +438,7 @@ controls.settings?.addEventListener("click", () => {
 });
 controls.closeSettings?.addEventListener("click", () => {
   playClick("soft");
-  toggleSettings(false);
+  setCallSettingsOpen(false);
 });
 controls.backchannels?.addEventListener("change", (event) =>
   persistField("backchannels", event.target.value, /* reconfigure */ true),
@@ -625,7 +639,7 @@ installShortcuts({
   toggleMute: handleMuteToggle,
   toggleTranscript: () => toggleTranscript(),
   toggleDiagnostics: () => toggleDiagnostics(),
-  toggleSettings: () => toggleSettings(),
+  toggleSettings: () => setCallSettingsOpen(),
   toggleInstructions: () => {
     const open = toggleInstructions();
     if (open) renderInstructionsPanel(customInstructions, onInstructionAxisChange);
@@ -649,6 +663,8 @@ installShortcuts({
   endConversation: endConversation,
   closeOverlays: () => {
     closeOverlays();
+    callMorphs.setSettingsOpen(false);
+    controls.settings?.setAttribute("aria-expanded", "false");
   },
   showOnboarding: () => setOnboardingOpen(true),
 });
@@ -699,25 +715,47 @@ void bootstrapLlmUi().then(() => {
 // Paint Settings → Runtime as soon as the page loads (don't wait for Start).
 void refreshRuntimeStatus();
 
-if (!isSetupComplete()) {
-  openSetupWizard({ force: true });
-} else {
-  setSetupOpen(false);
-  if (!settings.onboardingDismissed) {
-    setOnboardingOpen(true);
-  }
-  void pushLlmConfig(setup).catch(() => {});
-}
+// First paint is the call surface — do not force the setup wizard.
+setSetupOpen(false);
+void pushLlmConfig(setup).catch(() => {});
+void refreshTtsWarmup();
+window.setInterval(() => {
+  void refreshTtsWarmup();
+}, 4000);
 
 // Failsafe: dismiss splash after 3s even if bootstrapLlmUi hangs.
 setTimeout(dismissBootSplash, 3000);
 
 // Install ripple click feedback on all interactive elements.
 installRippleFeedback();
+callMorphs = installCallMorphs();
 
 /* ---------------------------------------------------------------------------
    Primary action / conversation lifecycle
    --------------------------------------------------------------------------- */
+
+function setCallSettingsOpen(force) {
+  const next = toggleSettings(force);
+  callMorphs.setSettingsOpen(next);
+  controls.settings?.setAttribute("aria-expanded", String(next));
+  return next;
+}
+
+async function refreshTtsWarmup() {
+  try {
+    const status = await fetchTtsStatus();
+    realTtsReady = isRealTtsReady(status);
+    if (
+      !conversationActive &&
+      (mode === VoiceMode.IDLE || mode === VoiceMode.STARTING) &&
+      !realTtsReady
+    ) {
+      setVoiceMode(VoiceMode.IDLE, "Listening…");
+    }
+  } catch {
+    realTtsReady = false;
+  }
+}
 
 function isInteractionBlocked() {
   return document.body.classList.contains("setup-open");
@@ -771,6 +809,7 @@ function handleMuteToggle() {
     audio.stopMicrophone();
     microphoneActive = false;
     setConversationActive(true, false, settings.entryMode === "ptt");
+    callMorphs.setMuted(true);
     transition(VoiceMode.MUTED);
     stopSpeechRecognition();
     return;
@@ -778,6 +817,7 @@ function handleMuteToggle() {
   audio.startMicrophone().then(() => {
     microphoneActive = true;
     setConversationActive(true, true, settings.entryMode === "ptt");
+    callMorphs.setMuted(false);
     hideNotice();
     transition(VoiceMode.LISTENING);
     startSpeechRecognition();
@@ -840,6 +880,7 @@ async function beginConversation() {
 
     conversationActive = true;
     setConversationActive(true, true, settings.entryMode === "ptt");
+    callMorphs.setMuted(false);
     transition(VoiceMode.LISTENING);
     startSpeechRecognition();
     transcript.append("system", "Conversation started.");
@@ -894,6 +935,7 @@ function endConversation() {
   renderTranscript(transcript.entries);
   resetExperience();
   visualizer.setMode(VoiceMode.IDLE);
+  callMorphs.setMuted(false);
   telemetry.reset();
   addTimeline("session", "Conversation ended");
 }
@@ -1949,11 +1991,20 @@ const CRITICAL_CONTROL_TYPES = new Set([
 
 function handleMedia(packet) {
   observeServerSequence(packet.sequence);
-  // Prefer the gateway's native TTS pipeline (Piper/formant) when it is
-  // actively streaming PCM. This is more reliable than browser TTS alone
-  // and avoids the intermittent silence/hang issues seen on Windows
-  // Chrome/Edge with speechSynthesis.
+  // Prefer the gateway's native TTS pipeline (Piper) when it is
+  // actively streaming PCM. Mock formant frames are dropped on the
+  // demo path unless the user explicitly selected engine=formant.
   if (packet?.pcm?.length > 0 && audio) {
+    if (!allowInboundProviderPcm(loadSetup(), activeProvider)) {
+      if (!handleMedia._droppedMock) {
+        handleMedia._droppedMock = true;
+        addTimeline(
+          "tts",
+          "Ignored mock formant PCM — demo path uses Piper or silence",
+        );
+      }
+      return;
+    }
     receivedMediaForGeneration = true;
     audio.enqueue(packet).catch((error) => {
       console.warn("Failed to enqueue server PCM:", error);
@@ -2146,7 +2197,7 @@ function handleControl(envelope) {
     assistantText = "";
     transcript.finalizeByGeneration(envelope.generation_id, finalText);
     renderTranscript(transcript.entries);
-    // Robust TTS: prefer gateway Piper/formant PCM, fall back to browser.
+    // Robust TTS: Piper (or configured engine). Auto never pads with formant.
     setup = loadSetup();
     const isSoftAck = /^(mm-?hmm|mhmm|mhm)\.?$/i.test(finalText);
     // Dedupe: gateway can emit the same final twice under race conditions.
@@ -2929,8 +2980,32 @@ function wireSetupSettingsBindings() {
     void withLoading(controls.settingsProbeAgent, probeAgentFromForm("settings")),
   );
   controls.reopenSetup?.addEventListener("click", () => {
-    toggleSettings(false);
+    setCallSettingsOpen(false);
     openSetupWizard({ force: true });
+  });
+  controls.settingsCamera?.addEventListener("click", () => {
+    setCallSettingsOpen(false);
+    void toggleCamera();
+  });
+  controls.settingsScreen?.addEventListener("click", () => {
+    setCallSettingsOpen(false);
+    void toggleScreenShare();
+  });
+  controls.settingsTranscript?.addEventListener("click", () => {
+    setCallSettingsOpen(false);
+    toggleTranscript(true);
+  });
+  controls.settingsModes?.addEventListener("click", () => {
+    setCallSettingsOpen(false);
+    toggleModePicker(true);
+  });
+  controls.settingsTasks?.addEventListener("click", () => {
+    setCallSettingsOpen(false);
+    setTaskRailVisible(true);
+  });
+  controls.settingsDiagnostics?.addEventListener("click", () => {
+    setCallSettingsOpen(false);
+    toggleDiagnostics(true);
   });
 }
 
@@ -3765,9 +3840,9 @@ function speechOpts(extra = {}) {
 }
 
 /**
- * Speak assistant text with the best available engine.
- * Tries gateway TTS (Piper/formant) first, then browser TTS as fallback.
- * Handles failures gracefully and transitions back to listening when done.
+ * Speak assistant text with the configured engine.
+ * Auto/Piper: neural TTS only — silence + on-screen text if Piper is not ready.
+ * Formant and browser run only when the user explicitly selected them.
  */
 async function speakAssistant(text, speakTurn, isSoftAck = false) {
   const localSetup = loadSetup();
@@ -3799,8 +3874,8 @@ async function speakAssistant(text, speakTurn, isSoftAck = false) {
     }
   }
 
-  // Fallback to browser TTS if gateway TTS is disabled or failed.
-  if (!gatewayOk && localSetup.browserTts !== false && browserTtsAvailable()) {
+  // Browser TTS only when the user picked that engine — never as an auto pad.
+  if (!gatewayOk && ttsEngine === "browser" && browserTtsAvailable()) {
     try {
       const fullySpoken = await speakBrowser(
         text,
@@ -3820,9 +3895,8 @@ async function speakAssistant(text, speakTurn, isSoftAck = false) {
     }
   }
 
-  // If neither engine could speak, at least keep the conversation alive.
-  if (!gatewayOk && (localSetup.browserTts === false || !browserTtsAvailable())) {
-    addTimeline("tts", "No TTS engine available; text shown only");
+  if (!gatewayOk && ttsEngine !== "browser") {
+    addTimeline("tts", "No neural TTS yet; showing text only");
   }
 
   // Transition back to listening when appropriate.
@@ -3886,8 +3960,8 @@ function showPiperInstallModal(ui) {
 }
 
 /**
- * Always try to speak assistant text.
- * Prefers open-source Piper → formant → browser.
+ * Speak assistant text for previews / explicit out-loud requests.
+ * Auto never pads with formant or browser TTS.
  * @param {string} text
  * @param {object} [extra]
  * @returns {Promise<boolean>}
@@ -3922,7 +3996,6 @@ async function speakAssistantOutLoud(text, extra = {}) {
     }
   }
 
-  // Prefer open-source Piper → formant → browser (browser quality is last resort).
   const spoken = await speakOpenLive(line, {
     voiceId: setup.voiceId || selectedVoice?.id,
     voiceURI: setup.browserVoiceURI || null,
@@ -3934,14 +4007,18 @@ async function speakAssistantOutLoud(text, extra = {}) {
   const ok = !!spoken.ok;
   if (ok) {
     hideNotice();
-  } else if (spoken.piper && !spoken.piper.available) {
-    const ui = piperInstallUi({ piper: spoken.piper });
-    showPiperInstallModal(ui);
+  } else if (
+    setup.ttsEngine === "piper" &&
+    spoken.piper &&
+    !spoken.piper.available &&
+    !speakAssistantOutLoud._shownInstall
+  ) {
+    speakAssistantOutLoud._shownInstall = true;
+    showPiperInstallModal(piperInstallUi({ piper: spoken.piper }));
+  } else if ((setup.ttsEngine || "auto") === "auto") {
+    hideNotice();
   } else {
-    showNotice(
-      spoken.error ||
-        "Speech failed. Settings → TTS: try Formant or install Piper (open-source).",
-    );
+    showNotice(spoken.error || "Speech failed.");
   }
 
   if (conversationActive && microphoneActive && !userEnded) {
@@ -4037,7 +4114,8 @@ async function previewSelectedVoice() {
       setup = saveSetup({ browserVoiceURI: uri });
       if (controls.settingsSystemVoice) controls.settingsSystemVoice.value = uri;
     }
-    if (setup.browserTts !== false && browserTtsAvailable() && catalog.length) {
+    const engine = setup.ttsEngine || "auto";
+    if (engine === "browser" && setup.browserTts !== false && browserTtsAvailable() && catalog.length) {
       showNotice(`Playing: ${catalog.find((c) => c.id === uri)?.name || "system voice"}…`);
       stopBrowserSpeech();
       const ok = await speakBrowser(
@@ -4049,15 +4127,26 @@ async function previewSelectedVoice() {
         return;
       }
     }
-    // Always offer formant backup on preview failure.
-    showNotice("Browser voice failed — playing backup formant voice…");
-    const data = await previewVoice(id, line);
-    await playPcmBase64(data.pcm_base64, data.sample_rate || 24000);
+    const spoken = await speakOpenLive(line, {
+      voiceId: id,
+      voiceURI: uri || null,
+      ttsEngine: engine,
+    });
+    if (spoken.ok) {
+      hideNotice();
+      return;
+    }
+    if (demoAllowsFormant(setup)) {
+      showNotice("Playing formant preview…");
+      const data = await previewVoice(id, line);
+      await playPcmBase64(data.pcm_base64, data.sample_rate || 24000);
+      hideNotice();
+      return;
+    }
     hideNotice();
     showNotice(
-      catalog.length
-        ? "Backup voice works. For natural speech, pick a System voice and try Preview again (Edge works best)."
-        : "No system voices found. Install Windows Speech voices, or keep using backup formant voice.",
+      spoken.error ||
+        "Preview silent until Piper is installed. Settings → TTS can switch to Formant.",
     );
   } catch (e) {
     showNotice(e?.message || "Preview failed");

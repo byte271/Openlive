@@ -8,13 +8,23 @@ import {
 } from "./audio-utils.js";
 import { EmotionDetector } from "./emotion-detector.js";
 
+/** Local-first barge-in order. VAD ducks before any server round trip. */
+export const BARGE_IN_CHAIN = Object.freeze([
+  "local_duck",
+  "soft_duck",
+  "hard_yield",
+  "cancel",
+]);
+
 /**
  * Openlive 26.7.16 — AudioSession
  *
  * Owns the AudioContext, the microphone capture worklet, the playback
  * worklet, and the output gain node. Bridges binary PCM frames between
  * the WebSocket and the worklets. Local-first interruption (the reversible
- * duck before any server round trip) lives here.
+ * duck before any server round trip) lives here:
+ *   local_duck → soft_duck → hard_yield → cancel generation
+ * VAD ducks playback before waiting on server RTT.
  *
  * Phase 1 client-side intelligence chain:
  *   mic → RNNoise worklet → Silero VAD worklet → capture worklet
