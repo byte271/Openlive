@@ -1,5 +1,6 @@
 /target
 /data
+apps/openlive-gateway/data/
 *.zip
 .DS_Store
 
