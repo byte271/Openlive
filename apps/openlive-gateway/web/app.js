@@ -186,6 +186,7 @@ let conversationActive = false;
 let joining = false;
 /** Bumped to cancel an in-flight auto-join when the user hits End. */
 let joinEpoch = 0;
+let bootSplashDismissed = false;
 let microphoneActive = false;
 let userEnded = true;
 let pttHeld = false;
@@ -196,6 +197,11 @@ let mode = VoiceMode.IDLE;
 /** Bumped on every barge-in / cancel so in-flight agent + TTS bail out. */
 let assistantTurnId = 0;
 let lastBargeInAt = 0;
+let lastSpokenFinal = "";
+let lastSpokenAt = 0;
+/** Tracks whether we've already received+played streaming PCM for the current
+ * generation. When true, speakAssistant is skipped to avoid double audio. */
+let receivedMediaForGeneration = false;
 
 let settings = loadSettings();
 /** @type {ReturnType<typeof loadSetup>} */
@@ -715,6 +721,7 @@ applySettingsForm();
 applySetupToSettingsForm();
 applySessionCapFromSettings();
 refreshFullscreenToggle();
+mode = VoiceMode.LISTENING;
 visualizer.setMode(VoiceMode.LISTENING);
 setVoiceMode(VoiceMode.LISTENING);
 renderVoiceList(voices, selectedVoice.id, onVoiceSelected);
@@ -957,7 +964,12 @@ async function beginConversation({ auto = false } = {}) {
 }
 
 function endConversation() {
-  if (!conversationActive && mode === VoiceMode.IDLE) return;
+  joinEpoch += 1;
+  joining = false;
+  if (!conversationActive && mode === VoiceMode.IDLE) {
+    setStarting(false);
+    return;
+  }
   userEnded = true;
   conversationActive = false;
   microphoneActive = false;
@@ -2017,12 +2029,6 @@ function hardInterruptAssistant(source = "barge-in") {
     }
   }, 320);
 }
-
-let lastSpokenFinal = "";
-let lastSpokenAt = 0;
-/** Tracks whether we've already received+played streaming PCM for the current
- * generation. When true, speakAssistant is skipped to avoid double audio. */
-let receivedMediaForGeneration = false;
 
 /** Control message types that should be buffered + retried during a transport
  * fallback transition (when neither WebRTC DC nor WebSocket is ready yet).
@@ -5145,8 +5151,6 @@ function microphoneErrorMessage(error) {
 /* ---------------------------------------------------------------------------
    Boot splash lifecycle + ripple click feedback (v26.7.16 UI revamp)
    --------------------------------------------------------------------------- */
-
-let bootSplashDismissed = false;
 
 /**
  * Remove the boot overlay immediately. The call surface is first paint;
