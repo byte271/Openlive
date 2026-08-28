@@ -510,18 +510,25 @@ svg {
   display: block;
 }
 
-/* Fallback for inline paths; <use> symbols carry their own stroke attrs. */
-svg path,
-svg rect,
-svg circle,
-svg line,
-svg polyline,
-svg polygon {
+/* Fallback for inline icon paths; <use> symbols carry their own stroke attrs.
+   Bloub's face uses filled mask geometry — exclude it from the icon stroke reset. */
+svg:not(.bloub-orb) path,
+svg:not(.bloub-orb) rect,
+svg:not(.bloub-orb) circle,
+svg:not(.bloub-orb) line,
+svg:not(.bloub-orb) polyline,
+svg:not(.bloub-orb) polygon {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.bloub-orb path,
+.bloub-orb rect,
+.bloub-orb circle {
+  stroke: none;
 }
 
 .icon-button svg,
@@ -4272,6 +4279,8 @@ body[data-ui="minimal"] .transcript-drawer {
 body[data-ui="minimal"] .backchannel-badge {
   background: rgba(107, 140, 255, 0.2);
   color: #c8d4ff;
+  opacity: 0;
+  animation: none;
   transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
 }
 
@@ -6139,9 +6148,16 @@ body[data-ui="minimal"] .orb-shell {
   filter: none;
   background: transparent;
 }
-body[data-ui="minimal"] .orb-aura,
-body[data-ui="minimal"] .orb-glow {
+body[data-ui="minimal"] .orb-shell::after {
   display: none;
+}
+body[data-ui="minimal"] .orb-aura,
+body[data-ui="minimal"] .orb-glow,
+body[data-ui="minimal"] .orb-ring {
+  display: none;
+}
+body[data-ui="minimal"] .orb-ring.barge-in {
+  display: block;
 }
 
 .call-chrome {

@@ -745,13 +745,6 @@ async function refreshTtsWarmup() {
   try {
     const status = await fetchTtsStatus();
     realTtsReady = isRealTtsReady(status);
-    if (
-      !conversationActive &&
-      (mode === VoiceMode.IDLE || mode === VoiceMode.STARTING) &&
-      !realTtsReady
-    ) {
-      setVoiceMode(VoiceMode.IDLE, "Listening…");
-    }
   } catch {
     realTtsReady = false;
   }

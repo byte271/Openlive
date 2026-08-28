@@ -13,8 +13,11 @@ import {
 import { bloubShouldDim, bloubStateFor } from "./call-state.js";
 
 const VB = DEMI_VIEWBOX;
-const PAPER = "#f4f4f2";
-const INK = "#0a0a0c";
+// On OpenLive's black call surface the face reads as a light orb with dark
+// eye holes (paper shows through the mask). Swapping these makes the body
+// disappear into the page.
+const PAPER = "#0a0a0c";
+const INK = "#f4f4f2";
 
 export class BloubOrb {
   /**
