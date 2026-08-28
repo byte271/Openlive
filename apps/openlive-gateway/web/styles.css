@@ -3753,7 +3753,15 @@ body[data-ui="minimal"] .minimal-brand .brand-name {
 
 body[data-ui="minimal"] .minimal-shell {
   display: block;
+  position: relative;
+  inset: auto;
+  overflow: visible;
   min-height: 100svh;
+  /* Boot fade-in leave-behind transforms make position:fixed dock clip. */
+  transform: none !important;
+  filter: none !important;
+  animation: none !important;
+  opacity: 1 !important;
 }
 
 body[data-ui="minimal"] .minimal-desk {
@@ -3829,18 +3837,23 @@ body[data-ui="minimal"] .assistant-ephemeral {
   min-height: 1.5em;
 }
 
-/* Bottom composer */
+/* Bottom call chrome */
 body[data-ui="minimal"] .minimal-dock {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 0 16px calc(20px + env(safe-area-inset-bottom));
+  padding: 0 16px calc(24px + env(safe-area-inset-bottom));
   background: transparent;
   border: 0;
   display: flex;
   justify-content: center;
+  align-items: flex-end;
   z-index: 30;
+  transform: none !important;
+  animation: none !important;
+  opacity: 1 !important;
+  min-height: 104px;
 }
 
 .composer-bar {
@@ -6131,6 +6144,8 @@ body.show-rail[data-ui="minimal"] .context-rail {
 }
 body[data-ui="minimal"] .minimal-shell {
   grid-template-columns: 1fr;
+  inset: auto;
+  overflow: visible;
 }
 
 .bloub-orb {
